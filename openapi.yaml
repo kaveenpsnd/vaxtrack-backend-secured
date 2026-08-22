@@ -1,0 +1,3367 @@
+openapi: 3.0.0
+info:
+  title: VaxTrack API
+  description: >
+    API documentation for the VaxTrack vaccination management system.
+
+    Includes the following modules:
+
+    - **Auth & User Profiles**
+
+    - **Vaccines & Batch Inventory**
+
+    - **Family Identity & Dependents**
+
+    - **Hospitals & Geocoding**
+
+    - **Clinics & Event Scheduling**
+
+    - **Appointments & Queue Management**
+
+    - **Vaccination Records**
+
+    - **Side Effects**
+  version: 1.0.0
+  contact:
+    name: VaxTrack Team
+
+servers:
+  - url: https://vaxtrack-backend.onrender.com/api
+    description: Production server
+  - url: http://localhost:5000/api
+    description: Local development server
+
+# ═══════════════════════════════════════════════════════════════
+# COMPONENTS
+# ═══════════════════════════════════════════════════════════════
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        JWT token obtained from POST /api/users/login.
+        Include as `Authorization: Bearer <token>` header.
+
+  schemas:
+    # ─── COMMON ERROR RESPONSE ─────────────────────────────────
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: An error occurred
+
+    # ─── USER / AUTH ───────────────────────────────────────────
+    User:
+      type: object
+      required:
+        - name
+        - email
+        - password
+        - nic
+        - phone
+      properties:
+        _id:
+          type: string
+          description: Auto-generated MongoDB ObjectId
+        name:
+          type: string
+          description: Full name of the user
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        role:
+          type: string
+          enum: [Admin, HospitalStaff, Public]
+          default: Public
+        nic:
+          type: string
+          description: National Identity Card number
+        phone:
+          type: string
+          description: Contact telephone number
+        dependents:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+              - age
+              - relation
+            properties:
+              name: { type: string }
+              age: { type: integer }
+              gender: { type: string, enum: [Male, Female] }
+              relation: { type: string }
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ─── VACCINE SUPPLY CHAIN ──────────────────────────────────
+    Vaccine:
+      type: object
+      required:
+        - name
+        - manufacturer
+        - description
+        - dosesRequired
+        - daysBetweenDoses
+      properties:
+        _id:
+          type: string
+          description: Auto-generated MongoDB ObjectId
+          example: 60d21b4667d0d8992e610c85
+        name:
+          type: string
+          description: Name of the vaccine
+          example: Pfizer-BioNTech
+        manufacturer:
+          type: string
+          description: Manufacturer of the vaccine
+          example: Pfizer
+        description:
+          type: string
+          description: Details about the vaccine
+          example: mRNA-based COVID-19 vaccine
+        dosesRequired:
+          type: integer
+          minimum: 1
+          description: Number of doses required for full vaccination
+          example: 2
+        daysBetweenDoses:
+          type: integer
+          minimum: 0
+          description: Number of days to wait between doses
+          example: 21
+        imageUrl:
+          type: string
+          format: uri
+          description: URL to an image of the vaccine (e.g., hosted on Cloudinary)
+          nullable: true
+          example: https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Batch:
+      type: object
+      required:
+        - vaccineId
+        - hospitalId
+        - batchNumber
+        - quantity
+        - expiryDate
+      properties:
+        _id:
+          type: string
+          description: Auto-generated MongoDB ObjectId
+          example: 60d21b4667d0d8992e610c86
+        vaccineId:
+          type: string
+          description: ObjectId of the associated Vaccine
+          example: 60d21b4667d0d8992e610c85
+        hospitalId:
+          type: string
+          description: ObjectId of the associated Hospital
+          example: 60f1b2c3d4e5f6g7h8i9j0k1
+        batchNumber:
+          type: string
+          description: Unique batch identifier
+          example: BATCH-PFZ-001
+        quantity:
+          type: integer
+          minimum: 0
+          description: Number of doses available in this batch
+          example: 500
+        expiryDate:
+          type: string
+          format: date-time
+          description: Expiration date of the batch
+          example: 2026-12-31T23:59:59.000Z
+        arrivalDate:
+          type: string
+          format: date-time
+          description: Date the batch arrived at the hospital
+          default: current time
+        status:
+          type: string
+          enum: [Available, Expired, Depleted]
+          default: Available
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ─── FAMILY IDENTITY ───────────────────────────────────────
+    Dependent:
+      type: object
+      required:
+        - userId
+        - name
+        - dateOfBirth
+        - relationship
+        - gender
+      properties:
+        _id:
+          type: string
+          description: Auto-generated MongoDB ObjectId
+        userId:
+          type: string
+          description: ObjectId of the Parent/Guardian User who owns this record
+        sharedWithUserIds:
+          type: array
+          items:
+            type: string
+          description: Array of ObjectIds of users this dependent is shared with
+        name:
+          type: string
+          description: Full name of the dependent
+          example: John Doe Jr.
+        nic:
+          type: string
+          description: National ID Card number (optional for minors)
+          nullable: true
+          example: "201012345678"
+        dateOfBirth:
+          type: string
+          format: date-time
+          description: Date of birth (must be in the past)
+          example: 2010-05-15T00:00:00.000Z
+        relationship:
+          type: string
+          enum: [Child, Parent, Spouse, Sibling, Grandparent, Grandchild, Other]
+          description: Relationship to the primary user
+          example: Child
+        linkedUserId:
+          type: string
+          description: ObjectId if the dependent has their own User account
+          nullable: true
+        gender:
+          type: string
+          enum: [Male, Female, Other]
+          example: Male
+        medicalNotes:
+          type: string
+          maxLength: 1000
+          description: Any relevant medical notes or allergies
+          default: ""
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ─── HOSPITAL ─────────────────────────────────────
+    Hospital:
+      type: object
+      required:
+        - name
+        - address
+        - city
+        - district
+        - contactNumber
+      properties:
+        _id:
+          type: string
+          description: Auto-generated MongoDB ObjectId
+          example: 665a1b2c3d4e5f6a7b8c9d0e
+        name:
+          type: string
+          description: Name of the hospital
+          maxLength: 150
+          example: Colombo General Hospital
+        address:
+          type: string
+          description: Full street address
+          example: Regent Street, Colombo 08
+        city:
+          type: string
+          description: City in which the hospital is located
+          example: Colombo
+        district:
+          type: string
+          description: Administrative district
+          example: Colombo
+        latitude:
+          type: number
+          format: double
+          description: >
+            Latitude coordinate (-90 to 90).
+            Auto-generated via LocationIQ geocoding if not provided.
+          minimum: -90
+          maximum: 90
+          example: 6.9271
+        longitude:
+          type: number
+          format: double
+          description: >
+            Longitude coordinate (-180 to 180).
+            Auto-generated via LocationIQ geocoding if not provided.
+          minimum: -180
+          maximum: 180
+          example: 79.8612
+        contactNumber:
+          type: string
+          description: >
+            Sri Lankan phone number in +94XXXXXXXXX or 0XXXXXXXXX format.
+          pattern: '^(?:\+94|0)\d{9}$'
+          example: "+94112691111"
+        createdBy:
+          type: string
+          description: ObjectId of the Admin user who registered the hospital
+          example: 507f1f77bcf86cd799439011
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ─── CLINIC / VACCINATION EVENT───────────────────
+    Clinic:
+      type: object
+      required:
+        - hospital
+        - date
+        - startTime
+        - endTime
+        - capacity
+        - vaccineType
+      properties:
+        _id:
+          type: string
+          description: Auto-generated MongoDB ObjectId
+          example: 665b2c3d4e5f6a7b8c9d0e1f
+        hospital:
+          oneOf:
+            - type: string
+              description: ObjectId reference to a Hospital
+              example: 665a1b2c3d4e5f6a7b8c9d0e
+            - $ref: '#/components/schemas/HospitalSummary'
+          description: >
+            Hospital reference. Returned as a populated object (name, city, district)
+            in responses, sent as a plain ObjectId string in requests.
+        date:
+          type: string
+          format: date
+          description: >
+            Date of the clinic session. Must not be in the past.
+          example: "2026-04-15"
+        startTime:
+          type: string
+          pattern: '^([01]\d|2[0-3]):([0-5]\d)$'
+          description: Start time in HH:mm 24-hour format
+          example: "09:00"
+        endTime:
+          type: string
+          pattern: '^([01]\d|2[0-3]):([0-5]\d)$'
+          description: >
+            End time in HH:mm 24-hour format. Must be after startTime.
+          example: "12:00"
+        capacity:
+          type: integer
+          minimum: 1
+          description: Maximum number of appointments for this session
+          example: 50
+        bookedCount:
+          type: integer
+          minimum: 0
+          description: Number of appointments already booked (read-only)
+          default: 0
+          readOnly: true
+          example: 12
+        vaccineType:
+          type: string
+          description: Type of vaccine administered at this session
+          example: COVID-19
+        isFull:
+          type: boolean
+          description: Virtual field — true when bookedCount >= capacity
+          readOnly: true
+          example: false
+        availableSlots:
+          type: integer
+          description: Virtual field — capacity minus bookedCount
+          readOnly: true
+          example: 38
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    HospitalSummary:
+      type: object
+      description: Populated hospital reference (subset of fields)
+      properties:
+        _id:
+          type: string
+          example: 665a1b2c3d4e5f6a7b8c9d0e
+        name:
+          type: string
+          example: Colombo General Hospital
+        city:
+          type: string
+          example: Colombo
+        district:
+          type: string
+          example: Colombo
+
+    # ─── APPOINTMENT ─────────────────────────────────────────
+    Appointment:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: Auto-generated MongoDB ObjectId
+          example: 665c3d4e5f6a7b8c9d0e1f2a
+        clinicId:
+          oneOf:
+            - type: string
+              description: ObjectId reference to a Clinic
+            - $ref: '#/components/schemas/Clinic'
+          description: Clinic session this appointment belongs to
+        userId:
+          oneOf:
+            - type: string
+              description: ObjectId of the booking user
+            - type: object
+              properties:
+                _id: { type: string }
+                name: { type: string }
+                email: { type: string, format: email }
+                phone: { type: string }
+        dependentId:
+          oneOf:
+            - type: string
+              nullable: true
+              description: ObjectId of the dependent (null if booking for self)
+            - type: object
+              nullable: true
+              properties:
+                _id: { type: string }
+                name: { type: string }
+                relationship: { type: string }
+                dateOfBirth: { type: string, format: date-time }
+        queueNumber:
+          type: integer
+          description: Auto-assigned sequential position in the clinic queue
+          example: 7
+          readOnly: true
+        status:
+          type: string
+          enum: [Pending, Completed, Cancelled, No-Show]
+          default: Pending
+          example: Pending
+        qrCodeUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: URL of the generated QR code image (null if generation failed)
+          example: https://api.qrserver.com/v1/create-qr-code/?data=appointmentId:665c3d4e5f6a7b8c9d0e1f2a
+        bookedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the appointment was booked
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ─── GEOCODE RESULT ────────────────────────────────────────
+    GeocodeResult:
+      type: object
+      properties:
+        latitude:
+          type: number
+          format: double
+          example: 6.9271
+        longitude:
+          type: number
+          format: double
+          example: 79.8612
+        displayName:
+          type: string
+          example: Colombo General Hospital, Regent Street, Colombo, Sri Lanka
+
+    # ─── VACCINATION RECORD ───────────────────────────────────
+    Record:
+      type: object
+      required:
+        - patientId
+        - vaccineId
+        - batchId
+        - hospitalId
+      properties:
+        _id:
+          type: string
+          description: Auto-generated MongoDB ObjectId
+          example: 665d4e5f6a7b8c9d0e1f2a3b
+        patientId:
+          type: string
+          description: ObjectId of the patient (User)
+          example: 507f1f77bcf86cd799439011
+        dependentName:
+          type: string
+          nullable: true
+          description: Name of the dependent if vaccination is for a child/spouse. Null if for the patient themselves.
+          default: null
+          example: null
+        vaccineId:
+          type: string
+          description: ObjectId of the administered Vaccine
+          example: 60d21b4667d0d8992e610c85
+        batchId:
+          type: string
+          description: ObjectId of the Batch used
+          example: 60d21b4667d0d8992e610c86
+        hospitalId:
+          type: string
+          description: ObjectId of the Hospital where vaccination occurred
+          example: 665a1b2c3d4e5f6a7b8c9d0e
+        dateAdministered:
+          type: string
+          format: date-time
+          description: Date and time the vaccination was administered
+          default: current time
+        nextDoseDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: Date when the next dose is due (null if no further doses needed)
+        administeredBy:
+          type: string
+          description: ObjectId of the Hospital Staff who administered the vaccine
+          example: 507f1f77bcf86cd799439001
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ─── SIDE EFFECT ──────────────────────────────────────────
+    SideEffect:
+      type: object
+      required:
+        - recordId
+        - userId
+        - symptoms
+      properties:
+        _id:
+          type: string
+          description: Auto-generated MongoDB ObjectId
+          example: 665e5f6a7b8c9d0e1f2a3b4c
+        recordId:
+          type: string
+          description: ObjectId of the vaccination record that caused the side effect
+          example: 665d4e5f6a7b8c9d0e1f2a3b
+        userId:
+          type: string
+          description: ObjectId of the user who reported the side effect
+          example: 507f1f77bcf86cd799439011
+        symptoms:
+          type: array
+          items:
+            type: string
+          description: List of symptoms experienced
+          example: ['Fever', 'Headache', 'Fatigue']
+        severity:
+          type: string
+          enum: [Mild, Moderate, Severe]
+          default: Mild
+          description: Severity of the side effects
+        dateReported:
+          type: string
+          format: date-time
+          description: When the side effect was reported
+          default: current time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+# ═══════════════════════════════════════════════════════════════
+# TAGS
+# ═══════════════════════════════════════════════════════════════
+tags:
+  - name: Auth
+    description: User authentication and profile management
+  - name: Vaccines
+    description: Vaccine supply management
+  - name: Batches
+    description: Vaccine batch inventory
+  - name: Dependents
+    description: Family identity — managing dependents
+  - name: Hospitals
+    description: Hospital registration & location services
+  - name: Clinics
+    description: Vaccination clinic/event scheduling
+  - name: Geocoding
+    description: Address geocoding via LocationIQ
+  - name: Appointments
+    description: Appointment booking & queue management
+  - name: Records
+    description: Vaccination records & medical history
+  - name: SideEffects
+    description: Adverse reaction reporting
+
+# ═══════════════════════════════════════════════════════════════
+# PATHS
+# ═══════════════════════════════════════════════════════════════
+paths:
+  # ────────────────────────────────────────────────────────────
+  # AUTH / USERS
+  # ────────────────────────────────────────────────────────────
+  /users:
+    post:
+      summary: Register a new user
+      description: Register a new user account.
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, nic, phone]
+              properties:
+                name: { type: string, example: John Doe }
+                email: { type: string, format: email, example: john@example.com }
+                password: { type: string, format: password, example: Secr3tPass! }
+                role: { type: string, enum: [Admin, HospitalStaff, Public], default: Public }
+                nic: { type: string, example: 123456789V }
+                phone: { type: string, example: 0771234567 }
+                dependents:
+                  type: array
+                  items:
+                    type: object
+                    required: [name, age, relation]
+                    properties:
+                      name: { type: string }
+                      age: { type: integer }
+                      gender: { type: string, enum: [Male, Female] }
+                      relation: { type: string }
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _id: { type: string }
+                  name: { type: string }
+                  email: { type: string }
+                  role: { type: string }
+                  token: { type: string }
+        '400':
+          description: Invalid user data or user already exists
+
+  /users/login:
+    post:
+      summary: Auth user & get token
+      description: Login to an existing user account to receive a JWT token.
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, example: john@example.com }
+                password: { type: string, format: password, example: Secr3tPass! }
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _id: { type: string }
+                  name: { type: string }
+                  email: { type: string }
+                  role: { type: string }
+                  token: { type: string }
+        '401':
+          description: Invalid email or password
+
+  /users/profile:
+    get:
+      summary: Get user profile
+      description: Retrieve the profile of the current authenticated user.
+      security:
+        - bearerAuth: []
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Not authorized, no token or invalid token
+
+  # ────────────────────────────────────────────────────────────
+  # VACCINES
+  # ────────────────────────────────────────────────────────────
+  /vaccines:
+    get:
+      summary: Get all Vaccines
+      description: Retrieve a list of all vaccines. Can optionally be filtered by manufacturer.
+      tags:
+        - Vaccines
+      parameters:
+        - in: query
+          name: manufacturer
+          schema:
+            type: string
+          description: Optional manufacturer name to filter by (case-insensitive partial match)
+      responses:
+        '200':
+          description: A list of vaccines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Vaccine'
+        '500':
+          description: Server error
+
+    post:
+      summary: Add a new Vaccine
+      description: Create a new vaccine record. Optionally upload an image which is stored to Cloudinary. Requires Admin privileges.
+      security:
+        - bearerAuth: []
+      tags:
+        - Vaccines
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - name
+                - manufacturer
+                - description
+                - dosesRequired
+                - daysBetweenDoses
+              properties:
+                name:
+                  type: string
+                manufacturer:
+                  type: string
+                description:
+                  type: string
+                dosesRequired:
+                  type: integer
+                daysBetweenDoses:
+                  type: integer
+                image:
+                  type: string
+                  format: binary
+                  description: An image file for the vaccine
+      responses:
+        '201':
+          description: Vaccine created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vaccine'
+        '400':
+          description: Bad request (validation errors)
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden (Requires Admin)
+        '500':
+          description: Server error
+
+  /vaccines/{id}:
+    get:
+      summary: Get Vaccine by ID
+      tags:
+        - Vaccines
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the vaccine
+      responses:
+        '200':
+          description: Vaccine found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Vaccine'
+        '400':
+          description: Invalid ID format
+        '404':
+          description: Vaccine not found
+        '500':
+          description: Server error
+
+    patch:
+      summary: Partially Update a Vaccine
+      description: Update one or more fields of an existing vaccine. Only provided fields will be updated. Optionally upload a replacement image stored to Cloudinary. Requires Admin privileges.
+      security:
+        - bearerAuth: []
+      tags:
+        - Vaccines
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the vaccine
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                manufacturer:
+                  type: string
+                description:
+                  type: string
+                dosesRequired:
+                  type: integer
+                daysBetweenDoses:
+                  type: integer
+                image:
+                  type: string
+                  format: binary
+                  description: Upload a new image. Replaces the existing one (takes precedence over removeImage).
+                removeImage:
+                  type: boolean
+                  default: false
+                  description: >
+                    Set to true to delete the existing image from Cloudinary and clear the imageUrl field.
+                    Ignored if a new image file is also provided.
+      responses:
+        '200':
+          description: Vaccine updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Vaccine'
+        '400':
+          description: Bad request
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Vaccine not found
+        '409':
+          description: Conflict
+        '500':
+          description: Server error
+
+    delete:
+      summary: Delete a Vaccine
+      security:
+        - bearerAuth: []
+      tags:
+        - Vaccines
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the vaccine
+      responses:
+        '200':
+          description: Vaccine deleted successfully
+        '400':
+          description: Invalid ID
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Vaccine not found
+        '500':
+          description: Server error
+
+  # ────────────────────────────────────────────────────────────
+  # BATCHES
+  # ────────────────────────────────────────────────────────────
+  /batches:
+    get:
+      summary: Get all Batches
+      description: Retrieve a list of all vaccine batches. Supports optional query filters.
+      security:
+        - bearerAuth: []
+      tags:
+        - Batches
+      parameters:
+        - in: query
+          name: hospitalId
+          schema:
+            type: string
+          description: Filter by hospital ID
+        - in: query
+          name: vaccineId
+          schema:
+            type: string
+          description: Filter by vaccine ID
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [Available, Expired, Depleted]
+          description: Filter by batch status
+      responses:
+        '200':
+          description: A list of batches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Batch'
+        '500':
+          description: Server error
+
+    post:
+      summary: Add a stock Batch
+      description: Register a new batch of vaccines at a specific hospital. Requires Admin or HospitalStaff privileges.
+      security:
+        - bearerAuth: []
+      tags:
+        - Batches
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - vaccineId
+                - hospitalId
+                - batchNumber
+                - quantity
+                - expiryDate
+              properties:
+                vaccineId:
+                  type: string
+                hospitalId:
+                  type: string
+                batchNumber:
+                  type: string
+                quantity:
+                  type: integer
+                expiryDate:
+                  type: string
+                  format: date-time
+                arrivalDate:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: Batch created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Batch'
+        '400':
+          description: Bad request
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden (Requires Admin or HospitalStaff)
+        '500':
+          description: Server error
+
+  /batches/{id}:
+    get:
+      summary: Get Batch by ID
+      description: Retrieve details of a specific batch, including populated vaccine and hospital data.
+      security:
+        - bearerAuth: []
+      tags:
+        - Batches
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the batch
+      responses:
+        '200':
+          description: Batch found successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Batch'
+        '400':
+          description: Invalid batch ID format
+        '404':
+          description: Batch not found
+        '500':
+          description: Server error
+
+    put:
+      summary: Update a Batch
+      description: Update details of an existing batch (e.g., modify quantity). Requires Admin or HospitalStaff privileges.
+      security:
+        - bearerAuth: []
+      tags:
+        - Batches
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the batch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                quantity:
+                  type: integer
+                status:
+                  type: string
+                  enum: [Available, Expired, Depleted]
+                expiryDate:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Batch updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Batch'
+        '400':
+          description: Bad request
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Batch not found
+
+    delete:
+      summary: Delete a Batch
+      description: Delete a specific batch. Requires Admin privileges.
+      security:
+        - bearerAuth: []
+      tags:
+        - Batches
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the batch
+      responses:
+        '200':
+          description: Batch deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Batch deleted successfully
+        '400':
+          description: Invalid batch ID format
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden (Requires Admin)
+        '404':
+          description: Batch not found
+        '500':
+          description: Server error
+
+  # ────────────────────────────────────────────────────────────
+  # DEPENDENTS
+  # ────────────────────────────────────────────────────────────
+  /users/dependents:
+    post:
+      summary: Add a new dependent
+      description: Add a child, spouse, or other dependent to the logged-in user's account.
+      security:
+        - bearerAuth: []
+      tags:
+        - Dependents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - dateOfBirth
+                - relationship
+                - gender
+              properties:
+                name:
+                  type: string
+                nic:
+                  type: string
+                dateOfBirth:
+                  type: string
+                  format: date-time
+                relationship:
+                  type: string
+                  enum: [Child, Parent, Spouse, Sibling, Grandparent, Grandchild, Other]
+                gender:
+                  type: string
+                  enum: [Male, Female, Other]
+                medicalNotes:
+                  type: string
+      responses:
+        '201':
+          description: Dependent added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Dependent'
+        '400':
+          description: Bad request
+        '401':
+          description: Not authorized
+
+    get:
+      summary: List all dependents
+      description: Retrieve a list of all dependents managed by the logged-in user.
+      security:
+        - bearerAuth: []
+      tags:
+        - Dependents
+      responses:
+        '200':
+          description: A list of dependents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Dependent'
+        '401':
+          description: Not authorized
+
+  /users/dependents/{id}:
+    get:
+      summary: Get a dependent by ID
+      description: Retrieve details for a specific dependent belonging to the logged-in user.
+      security:
+        - bearerAuth: []
+      tags:
+        - Dependents
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the dependent
+      responses:
+        '200':
+          description: Dependent found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Dependent'
+        '404':
+          description: Dependent not found
+        '401':
+          description: Not authorized
+
+    put:
+      summary: Update a Dependent
+      description: Update details of a dependent. Requires parent or shared user access.
+      security:
+        - bearerAuth: []
+      tags:
+        - Dependents
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the dependent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                dateOfBirth:
+                  type: string
+                  format: date-time
+                relationship:
+                  type: string
+                  enum: [Child, Parent, Spouse, Sibling, Grandparent, Grandchild, Other]
+                gender:
+                  type: string
+                  enum: [Male, Female, Other]
+                medicalNotes:
+                  type: string
+                nic:
+                  type: string
+      responses:
+        '200':
+          description: Dependent updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Dependent'
+        '400':
+          description: Bad request
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Dependent not found
+
+    delete:
+      summary: Delete a Dependent
+      description: Delete a dependent. Only the parent can delete.
+      security:
+        - bearerAuth: []
+      tags:
+        - Dependents
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the dependent
+      responses:
+        '200':
+          description: Dependent deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Dependent not found
+
+  # ════════════════════════════════════════════════════════════
+  # HOSPITALS
+  # ════════════════════════════════════════════════════════════
+  /hospitals:
+    post:
+      summary: Register a new Hospital
+      description: >
+        Register a hospital with address details. The system automatically
+        fetches latitude and longitude using **LocationIQ geocoding** based on
+        the provided address and city. If geocoding fails, a 400 error is returned
+        asking the user to provide coordinates manually.
+
+
+        **Validation rules:**
+
+        - `name`, `address`, `city`, `district`, `contactNumber` are required.
+
+        - `contactNumber` must match Sri Lankan format (`+94XXXXXXXXX` or `0XXXXXXXXX`).
+
+        - `latitude` must be between -90 and 90 (if provided manually).
+
+        - `longitude` must be between -180 and 180 (if provided manually).
+
+        - Duplicate hospital (same name + district) returns 409 Conflict.
+      operationId: createHospital
+      security:
+        - bearerAuth: []
+      tags:
+        - Hospitals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - address
+                - city
+                - district
+                - contactNumber
+              properties:
+                name:
+                  type: string
+                  description: Name of the hospital
+                  example: Colombo General Hospital
+                address:
+                  type: string
+                  description: Full street address (used for geocoding)
+                  example: Regent Street, Colombo 08
+                city:
+                  type: string
+                  description: City name (used for geocoding)
+                  example: Colombo
+                district:
+                  type: string
+                  description: Administrative district
+                  example: Colombo
+                contactNumber:
+                  type: string
+                  description: Sri Lankan phone number
+                  example: "+94112691111"
+                latitude:
+                  type: number
+                  format: double
+                  description: Optional. If omitted, auto-generated via geocoding.
+                  example: 6.9271
+                longitude:
+                  type: number
+                  format: double
+                  description: Optional. If omitted, auto-generated via geocoding.
+                  example: 79.8612
+      responses:
+        '201':
+          description: Hospital registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Hospital registered successfully
+                  data:
+                    $ref: '#/components/schemas/Hospital'
+                  geocoded:
+                    type: boolean
+                    description: true if lat/long were auto-generated via LocationIQ
+                    example: true
+        '400':
+          description: >
+            Bad request — missing required fields, invalid phone format,
+            lat/long out of range, or geocoding failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Not authorized — no token or invalid token
+        '403':
+          description: Forbidden — requires Admin role
+        '409':
+          description: Conflict — hospital with same name already exists in this district
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+
+    get:
+      summary: Get all Hospitals
+      description: >
+        Retrieve a list of all hospitals. Supports optional query filters
+        by `city` and `district` (case-insensitive partial match).
+      operationId: getAllHospitals
+      tags:
+        - Hospitals
+      parameters:
+        - in: query
+          name: city
+          schema:
+            type: string
+          description: Filter by city (case-insensitive, partial match)
+          example: Colombo
+        - in: query
+          name: district
+          schema:
+            type: string
+          description: Filter by district (case-insensitive, partial match)
+          example: Colombo
+      responses:
+        '200':
+          description: List of hospitals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  count:
+                    type: integer
+                    example: 5
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Hospital'
+        '500':
+          description: Server error
+
+  /hospitals/{id}:
+    get:
+      summary: Get Hospital by ID
+      description: Retrieve a single hospital by its MongoDB ObjectId.
+      operationId: getHospitalById
+      tags:
+        - Hospitals
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: MongoDB ObjectId of the hospital
+          example: 665a1b2c3d4e5f6a7b8c9d0e
+      responses:
+        '200':
+          description: Hospital found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Hospital'
+        '400':
+          description: Invalid hospital ID format (CastError)
+        '404':
+          description: Hospital not found
+        '500':
+          description: Server error
+
+    put:
+      summary: Update a Hospital
+      description: >
+        Update one or more fields of an existing hospital. Only provided fields
+        are updated; omitted fields remain unchanged.
+
+
+        **Validation rules:**
+
+        - At least one update field must be provided.
+
+        - `contactNumber` format is validated if provided.
+
+        - `latitude`/`longitude` ranges are validated if provided.
+
+        - `name` cannot be set to an empty string.
+      operationId: updateHospital
+      security:
+        - bearerAuth: []
+      tags:
+        - Hospitals
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: MongoDB ObjectId of the hospital
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Colombo Teaching Hospital
+                address:
+                  type: string
+                city:
+                  type: string
+                district:
+                  type: string
+                contactNumber:
+                  type: string
+                  example: "+94112691234"
+                latitude:
+                  type: number
+                  format: double
+                longitude:
+                  type: number
+                  format: double
+      responses:
+        '200':
+          description: Hospital updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Hospital updated successfully
+                  data:
+                    $ref: '#/components/schemas/Hospital'
+        '400':
+          description: >
+            Bad request — no fields provided, invalid phone, invalid lat/long,
+            empty name, invalid ID format, or validation error.
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires Admin role
+        '404':
+          description: Hospital not found
+        '409':
+          description: Conflict — duplicate name + district
+        '500':
+          description: Server error
+
+    delete:
+      summary: Delete a Hospital
+      description: Permanently remove a hospital record. Requires Admin privileges.
+      operationId: deleteHospital
+      security:
+        - bearerAuth: []
+      tags:
+        - Hospitals
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: MongoDB ObjectId of the hospital
+      responses:
+        '200':
+          description: Hospital deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Hospital deleted successfully
+        '400':
+          description: Invalid hospital ID format
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires Admin role
+        '404':
+          description: Hospital not found
+        '500':
+          description: Server error
+
+  # ════════════════════════════════════════════════════════════
+  # CLINICS
+  # ════════════════════════════════════════════════════════════
+  /clinics:
+    post:
+      summary: Create a Vaccination Clinic Session
+      description: >
+        Create a new vaccination clinic (event) at a hospital. Checks for
+        schedule conflicts with existing sessions at the same hospital on
+        the same date.
+
+
+        **Validation rules:**
+
+        - `hospital`, `date`, `startTime`, `endTime`, `capacity`, `vaccineType` are required.
+
+        - `startTime` and `endTime` must be in HH:mm 24-hour format.
+
+        - `endTime` must be after `startTime`.
+
+        - `date` cannot be in the past.
+
+        - `capacity` must be a positive integer (>= 1).
+
+        - Referenced hospital must exist.
+
+        - No overlapping sessions allowed at the same hospital on the same date.
+      operationId: createClinic
+      security:
+        - bearerAuth: []
+      tags:
+        - Clinics
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - hospital
+                - date
+                - startTime
+                - endTime
+                - capacity
+                - vaccineType
+              properties:
+                hospital:
+                  type: string
+                  description: ObjectId of the Hospital where the clinic takes place
+                  example: 665a1b2c3d4e5f6a7b8c9d0e
+                date:
+                  type: string
+                  format: date
+                  description: Date of the clinic (must not be in the past)
+                  example: "2026-04-15"
+                startTime:
+                  type: string
+                  pattern: '^([01]\d|2[0-3]):([0-5]\d)$'
+                  description: Start time in HH:mm format
+                  example: "09:00"
+                endTime:
+                  type: string
+                  pattern: '^([01]\d|2[0-3]):([0-5]\d)$'
+                  description: End time in HH:mm format (must be after startTime)
+                  example: "12:00"
+                capacity:
+                  type: integer
+                  minimum: 1
+                  description: Maximum number of bookable slots
+                  example: 50
+                vaccineType:
+                  type: string
+                  description: Type of vaccine offered
+                  example: COVID-19
+      responses:
+        '201':
+          description: Clinic session created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Clinic session created successfully
+                  data:
+                    $ref: '#/components/schemas/Clinic'
+        '400':
+          description: >
+            Bad request — missing fields, invalid time format, end before start,
+            past date, non-integer capacity, or validation error.
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires HospitalStaff or Admin role
+        '404':
+          description: Hospital not found
+        '409':
+          description: >
+            Schedule conflict — overlapping session exists, or duplicate
+            hospital + date + startTime.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                  conflictWith:
+                    type: object
+                    properties:
+                      clinicId:
+                        type: string
+                      startTime:
+                        type: string
+                      endTime:
+                        type: string
+        '500':
+          description: Server error
+
+    get:
+      summary: Get all Clinic Sessions (with filters)
+      description: >
+        Retrieve all clinic sessions. Supports filtering by `date` and
+        `vaccineType` via query parameters (case-insensitive).
+      operationId: getAllClinics
+      tags:
+        - Clinics
+      parameters:
+        - in: query
+          name: date
+          schema:
+            type: string
+            format: date
+          description: Filter by exact date (e.g., 2026-04-15)
+          example: "2026-04-15"
+        - in: query
+          name: vaccineType
+          schema:
+            type: string
+          description: Filter by vaccine type (case-insensitive, partial match)
+          example: COVID
+      responses:
+        '200':
+          description: List of clinic sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  count:
+                    type: integer
+                    example: 3
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Clinic'
+        '500':
+          description: Server error
+
+  /clinics/hospital/{hospitalId}:
+    get:
+      summary: Get Clinics by Hospital
+      description: >
+        Retrieve all clinic sessions for a specific hospital. Supports
+        optional filtering by `date` and `vaccineType`.
+      operationId: getClinicsByHospital
+      tags:
+        - Clinics
+      parameters:
+        - in: path
+          name: hospitalId
+          required: true
+          schema:
+            type: string
+          description: MongoDB ObjectId of the hospital
+          example: 665a1b2c3d4e5f6a7b8c9d0e
+        - in: query
+          name: date
+          schema:
+            type: string
+            format: date
+          description: Filter by date
+        - in: query
+          name: vaccineType
+          schema:
+            type: string
+          description: Filter by vaccine type
+      responses:
+        '200':
+          description: List of clinic sessions for the hospital
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  count:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Clinic'
+        '400':
+          description: Invalid hospital ID format
+        '404':
+          description: Hospital not found
+        '500':
+          description: Server error
+
+  /clinics/{id}:
+    get:
+      summary: Get Clinic by ID
+      description: >
+        Retrieve a single clinic session by its MongoDB ObjectId.
+        The response includes populated hospital details (name, city, district)
+        and virtual fields (isFull, availableSlots).
+      operationId: getClinicById
+      tags:
+        - Clinics
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: MongoDB ObjectId of the clinic session
+          example: 665b2c3d4e5f6a7b8c9d0e1f
+      responses:
+        '200':
+          description: Clinic session found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Clinic'
+        '400':
+          description: Invalid clinic ID format (CastError)
+        '404':
+          description: Clinic session not found
+        '500':
+          description: Server error
+
+    put:
+      summary: Update a Clinic Session (Full Update)
+      description: >
+        Update any field of an existing clinic session. If bookings exist,
+        date/time/hospital changes are blocked to protect existing appointments.
+
+
+        **Validation rules:**
+
+        - `startTime`/`endTime` must be in HH:mm format if provided.
+
+        - `endTime` must be after `startTime`.
+
+        - Cannot reschedule if bookings exist.
+
+        - Cannot reduce capacity below current bookings.
+
+        - Overlap checks are performed for schedule changes.
+      operationId: updateClinic
+      security:
+        - bearerAuth: []
+      tags:
+        - Clinics
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: MongoDB ObjectId of the clinic session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date:
+                  type: string
+                  format: date
+                startTime:
+                  type: string
+                  pattern: '^([01]\d|2[0-3]):([0-5]\d)$'
+                endTime:
+                  type: string
+                  pattern: '^([01]\d|2[0-3]):([0-5]\d)$'
+                capacity:
+                  type: integer
+                  minimum: 1
+                vaccineType:
+                  type: string
+                hospital:
+                  type: string
+                  description: ObjectId of a different hospital (to reassign)
+      responses:
+        '200':
+          description: Clinic session updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Clinic session updated successfully
+                  data:
+                    $ref: '#/components/schemas/Clinic'
+        '400':
+          description: >
+            Bad request — invalid time format, end before start, cannot reschedule
+            with bookings, capacity below bookings, or validation error.
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires HospitalStaff or Admin role
+        '404':
+          description: Clinic session not found
+        '409':
+          description: Schedule conflict with existing session
+        '500':
+          description: Server error
+
+    delete:
+      summary: Delete a Clinic Session
+      description: >
+        Permanently remove a clinic session. Cannot delete if the session
+        has active bookings (bookedCount > 0). Requires Admin role.
+      operationId: deleteClinic
+      security:
+        - bearerAuth: []
+      tags:
+        - Clinics
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: MongoDB ObjectId of the clinic session
+      responses:
+        '200':
+          description: Clinic session deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Clinic session deleted successfully
+        '400':
+          description: >
+            Invalid clinic ID format, or cannot delete session with active bookings.
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires Admin role
+        '404':
+          description: Clinic session not found
+        '500':
+          description: Server error
+
+  /clinics/{id}/capacity:
+    patch:
+      summary: Update Clinic Capacity
+      description: >
+        Update only the capacity of a clinic session. Cannot reduce capacity
+        below the number of existing bookings.
+
+
+        **Validation rules:**
+
+        - `capacity` is required and must be a positive integer.
+
+        - Cannot reduce below current `bookedCount`.
+      operationId: updateClinicCapacity
+      security:
+        - bearerAuth: []
+      tags:
+        - Clinics
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: MongoDB ObjectId of the clinic session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - capacity
+              properties:
+                capacity:
+                  type: integer
+                  minimum: 1
+                  description: New capacity value
+                  example: 100
+      responses:
+        '200':
+          description: Clinic capacity updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Clinic capacity updated successfully
+                  data:
+                    $ref: '#/components/schemas/Clinic'
+        '400':
+          description: >
+            Missing capacity, non-integer value, or cannot reduce below
+            booked count.
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires HospitalStaff or Admin role
+        '404':
+          description: Clinic session not found
+        '500':
+          description: Server error
+
+  # ════════════════════════════════════════════════════════════
+  # GEOCODING
+  # ════════════════════════════════════════════════════════════
+  /geocode/test:
+    post:
+      summary: Test Forward Geocoding
+      description: >
+        Convert an address string to latitude/longitude coordinates using
+        the LocationIQ API. This is a test/utility endpoint for verifying
+        geocoding integration. Requires Admin privileges.
+      operationId: testGeocode
+      security:
+        - bearerAuth: []
+      tags:
+        - Geocoding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - address
+              properties:
+                address:
+                  type: string
+                  description: Street address to geocode
+                  example: Regent Street, Colombo 08
+                city:
+                  type: string
+                  description: City to narrow geocoding results
+                  example: Colombo
+      responses:
+        '200':
+          description: Geocoding successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Geocoding successful
+                  data:
+                    $ref: '#/components/schemas/GeocodeResult'
+        '400':
+          description: Missing address parameter
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires Admin role
+        '500':
+          description: Geocoding failed (API error or service unavailable)
+
+  /geocode/reverse:
+    post:
+      summary: Test Reverse Geocoding
+      description: >
+        Convert latitude/longitude coordinates back to a human-readable
+        address using the LocationIQ API. Test/utility endpoint.
+        Requires Admin privileges.
+      operationId: testReverseGeocode
+      security:
+        - bearerAuth: []
+      tags:
+        - Geocoding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - latitude
+                - longitude
+              properties:
+                latitude:
+                  type: number
+                  format: double
+                  description: Latitude coordinate
+                  example: 6.9271
+                longitude:
+                  type: number
+                  format: double
+                  description: Longitude coordinate
+                  example: 79.8612
+      responses:
+        '200':
+          description: Reverse geocoding successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Reverse geocoding successful
+                  data:
+                    type: object
+                    properties:
+                      address:
+                        type: string
+                        example: Colombo General Hospital, Regent Street, Colombo, Sri Lanka
+        '400':
+          description: Missing latitude or longitude
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires Admin role
+        '500':
+          description: Reverse geocoding failed
+
+  # ════════════════════════════════════════════════════════════
+  # APPOINTMENTS
+  # ════════════════════════════════════════════════════════════
+  /appointments:
+    post:
+      summary: Book a new Appointment
+      description: >
+        Book a vaccination appointment for the logged-in user or one of their
+        dependents. Checks clinic capacity and prevents double-booking.
+        Generates a QR code (stored in `qrCodeUrl`) after a successful booking.
+      operationId: bookAppointment
+      security:
+        - bearerAuth: []
+      tags:
+        - Appointments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - clinicId
+              properties:
+                clinicId:
+                  type: string
+                  description: ObjectId of the clinic session to book
+                  example: 665b2c3d4e5f6a7b8c9d0e1f
+                dependentId:
+                  type: string
+                  nullable: true
+                  description: ObjectId of a dependent to book on behalf of (omit to book for self)
+                  example: 665d4e5f6a7b8c9d0e1f2a3b
+      responses:
+        '201':
+          description: Appointment booked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Appointment booked successfully }
+                  data:
+                    $ref: '#/components/schemas/Appointment'
+        '400':
+          description: Bad request — missing clinicId or invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Not authorized
+        '404':
+          description: Clinic not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict — clinic fully booked or duplicate active booking
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+
+    get:
+      summary: Get all Appointments
+      description: >
+        Retrieve all appointments across all users and clinics.
+        Supports optional query filters: `status`, `clinicId`, `userId`.
+        Requires Admin privileges.
+      operationId: getAllAppointments
+      security:
+        - bearerAuth: []
+      tags:
+        - Appointments
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [Pending, Completed, Cancelled, No-Show]
+          description: Filter by appointment status
+        - in: query
+          name: clinicId
+          schema:
+            type: string
+          description: Filter by clinic ObjectId
+        - in: query
+          name: userId
+          schema:
+            type: string
+          description: Filter by user ObjectId
+      responses:
+        '200':
+          description: List of appointments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  count: { type: integer, example: 42 }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Appointment'
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires Admin role
+        '500':
+          description: Internal server error
+
+  /appointments/my:
+    get:
+      summary: Get my Appointments
+      description: Retrieve all appointments belonging to the currently logged-in user.
+      operationId: getMyAppointments
+      security:
+        - bearerAuth: []
+      tags:
+        - Appointments
+      responses:
+        '200':
+          description: List of the user's appointments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  count: { type: integer, example: 3 }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Appointment'
+        '401':
+          description: Not authorized
+        '500':
+          description: Internal server error
+
+  /appointments/clinic/{clinicId}:
+    get:
+      summary: Get clinic queue
+      description: >
+        Retrieve all appointments for a specific clinic session, ordered by
+        queue number. Requires HospitalStaff or Admin role.
+      operationId: getClinicQueue
+      security:
+        - bearerAuth: []
+      tags:
+        - Appointments
+      parameters:
+        - in: path
+          name: clinicId
+          required: true
+          schema:
+            type: string
+          description: ObjectId of the clinic session
+      responses:
+        '200':
+          description: Queue for the clinic
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  count: { type: integer, example: 12 }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Appointment'
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires HospitalStaff or Admin role
+        '404':
+          description: Clinic not found
+        '500':
+          description: Internal server error
+
+  /appointments/{id}:
+    get:
+      summary: Get Appointment by ID
+      description: >
+        Retrieve a single appointment by its ObjectId.
+        Users may only fetch their own appointments; Staff and Admin can fetch any.
+      operationId: getAppointmentById
+      security:
+        - bearerAuth: []
+      tags:
+        - Appointments
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: ObjectId of the appointment
+      responses:
+        '200':
+          description: Appointment found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    $ref: '#/components/schemas/Appointment'
+        '400':
+          description: Invalid appointment ID format
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — not the appointment owner
+        '404':
+          description: Appointment not found
+        '500':
+          description: Internal server error
+
+    put:
+      summary: Update an Appointment
+      description: >
+        Update the `status` of an appointment.
+        If status changes to `Cancelled` and the appointment was `Pending`,
+        the clinic's `bookedCount` is decremented automatically.
+        Requires HospitalStaff or Admin role.
+      operationId: updateAppointment
+      security:
+        - bearerAuth: []
+      tags:
+        - Appointments
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: ObjectId of the appointment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [Pending, Completed, Cancelled, No-Show]
+                  example: Completed
+      responses:
+        '200':
+          description: Appointment updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Appointment updated successfully }
+                  data:
+                    $ref: '#/components/schemas/Appointment'
+        '400':
+          description: Bad request — no fields provided, invalid status, or invalid ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires HospitalStaff or Admin role
+        '404':
+          description: Appointment not found
+        '500':
+          description: Internal server error
+
+    delete:
+      summary: Delete an Appointment
+      description: >
+        Permanently delete an appointment record.
+        If the appointment status was `Pending`, the clinic's `bookedCount`
+        is decremented automatically to free the seat.
+        Requires Admin role.
+      operationId: deleteAppointment
+      security:
+        - bearerAuth: []
+      tags:
+        - Appointments
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: ObjectId of the appointment
+      responses:
+        '200':
+          description: Appointment deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Appointment deleted successfully }
+        '400':
+          description: Invalid appointment ID format
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires Admin role
+        '404':
+          description: Appointment not found
+        '500':
+          description: Internal server error
+
+  /appointments/{id}/cancel:
+    patch:
+      summary: Cancel an Appointment
+      description: >
+        Cancel a `Pending` appointment. The clinic's `bookedCount` is
+        decremented automatically. Only the appointment owner, HospitalStaff,
+        or Admin may cancel.
+      operationId: cancelAppointment
+      security:
+        - bearerAuth: []
+      tags:
+        - Appointments
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: ObjectId of the appointment
+      responses:
+        '200':
+          description: Appointment cancelled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Appointment cancelled successfully }
+                  data:
+                    $ref: '#/components/schemas/Appointment'
+        '400':
+          description: Bad request — appointment is not in Pending status or invalid ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — not the appointment owner
+        '404':
+          description: Appointment not found
+        '500':
+          description: Internal server error
+
+  /appointments/{id}/status:
+    patch:
+      summary: Update Appointment status
+      description: >
+        Mark an appointment as `Completed` or `No-Show`.
+        Requires HospitalStaff or Admin role.
+      operationId: updateAppointmentStatus
+      security:
+        - bearerAuth: []
+      tags:
+        - Appointments
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: ObjectId of the appointment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [Completed, No-Show]
+                  example: Completed
+      responses:
+        '200':
+          description: Status updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Appointment marked as Completed }
+                  data:
+                    $ref: '#/components/schemas/Appointment'
+        '400':
+          description: Bad request — invalid status value or invalid ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires HospitalStaff or Admin role
+        '404':
+          description: Appointment not found
+        '500':
+          description: Internal server error
+
+  # ════════════════════════════════════════════════════════════
+  # RECORDS
+  # ════════════════════════════════════════════════════════════
+  /records:
+    post:
+      summary: Create a vaccination record
+      description: >
+        Create a new vaccination record (mark patient as vaccinated).
+        Requires HospitalStaff or Admin privileges.
+      security:
+        - bearerAuth: []
+      tags:
+        - Records
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patientId, vaccineId, batchId, hospitalId]
+              properties:
+                patientId:
+                  type: string
+                  description: ObjectId of the patient
+                  example: 507f1f77bcf86cd799439011
+                dependentName:
+                  type: string
+                  nullable: true
+                  description: Name of the dependent (omit or null if for the patient)
+                vaccineId:
+                  type: string
+                  description: ObjectId of the vaccine
+                  example: 60d21b4667d0d8992e610c85
+                batchId:
+                  type: string
+                  description: ObjectId of the batch
+                  example: 60d21b4667d0d8992e610c86
+                hospitalId:
+                  type: string
+                  description: ObjectId of the hospital
+                  example: 665a1b2c3d4e5f6a7b8c9d0e
+      responses:
+        '201':
+          description: Vaccination record created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Vaccination record created successfully }
+                  data:
+                    $ref: '#/components/schemas/Record'
+        '400':
+          description: Invalid record data
+        '401':
+          description: Not authorized
+        '404':
+          description: Patient not found
+        '500':
+          description: Internal server error
+
+    get:
+      summary: Get all Records
+      description: >
+        Retrieve all vaccination records with populated references.
+        Supports optional query filters. Requires HospitalStaff or Admin role.
+      security:
+        - bearerAuth: []
+      tags:
+        - Records
+      parameters:
+        - in: query
+          name: patientId
+          schema:
+            type: string
+          description: Filter by patient ObjectId
+        - in: query
+          name: vaccineId
+          schema:
+            type: string
+          description: Filter by vaccine ObjectId
+        - in: query
+          name: hospitalId
+          schema:
+            type: string
+          description: Filter by hospital ObjectId
+      responses:
+        '200':
+          description: A list of vaccination records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  count: { type: integer, example: 25 }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Record'
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires HospitalStaff or Admin role
+        '500':
+          description: Internal server error
+
+  /records/my:
+    get:
+      summary: Get my records
+      description: >
+        Retrieve the vaccination records for the currently authenticated user.
+        Returns records sorted by date administered (newest first).
+      security:
+        - bearerAuth: []
+      tags:
+        - Records
+      responses:
+        '200':
+          description: User's vaccination records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  count: { type: integer, example: 3 }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Record'
+        '401':
+          description: Not authorized
+        '500':
+          description: Internal server error
+
+  /records/history:
+    get:
+      summary: Get full vaccination history
+      description: >
+        Retrieve the full vaccination history for the authenticated user,
+        grouped into self records and dependent records (by dependent name).
+      security:
+        - bearerAuth: []
+      tags:
+        - Records
+      responses:
+        '200':
+          description: Grouped vaccination history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      self:
+                        type: object
+                        properties:
+                          name: { type: string, example: John Doe }
+                          count: { type: integer, example: 2 }
+                          records:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Record'
+                      dependents:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            dependentName: { type: string, example: Child One }
+                            records:
+                              type: array
+                              items:
+                                $ref: '#/components/schemas/Record'
+                      totalRecords: { type: integer, example: 5 }
+        '401':
+          description: Not authorized
+        '500':
+          description: Internal server error
+
+  /records/due:
+    get:
+      summary: Get due vaccinations
+      description: >
+        Retrieve upcoming and overdue vaccinations for the authenticated user
+        and their dependents. Upcoming = nextDoseDate >= today. Overdue = nextDoseDate < today.
+      security:
+        - bearerAuth: []
+      tags:
+        - Records
+      responses:
+        '200':
+          description: Due vaccination records grouped by upcoming and overdue
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      upcoming:
+                        type: object
+                        properties:
+                          count: { type: integer, example: 1 }
+                          records:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Record'
+                      overdue:
+                        type: object
+                        properties:
+                          count: { type: integer, example: 0 }
+                          records:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Record'
+        '401':
+          description: Not authorized
+        '500':
+          description: Internal server error
+
+  /records/{id}:
+    get:
+      summary: Get Record by ID
+      description: >
+        Retrieve a single vaccination record by its ID.
+        The user can view their own records (patientId matches) or any record if they are Staff/Admin.
+      security:
+        - bearerAuth: []
+      tags:
+        - Records
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the vaccination record
+      responses:
+        '200':
+          description: Vaccination record found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    $ref: '#/components/schemas/Record'
+        '400':
+          description: Invalid record ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Not authorized
+        '403':
+          description: Not authorized to view this record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Vaccination record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+
+    put:
+      summary: Update a Record
+      description: >
+        Update an existing vaccination record. Only allowed fields can be updated:
+        dateAdministered, nextDoseDate, dependentName, batchId, hospitalId.
+        Fields patientId, vaccineId, and administeredBy are immutable.
+        Requires HospitalStaff or Admin role.
+      security:
+        - bearerAuth: []
+      tags:
+        - Records
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the vaccination record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dateAdministered:
+                  type: string
+                  format: date-time
+                  description: Updated administration date
+                nextDoseDate:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: Updated next dose date
+                dependentName:
+                  type: string
+                  nullable: true
+                  description: Updated dependent name
+                batchId:
+                  type: string
+                  description: Updated batch ObjectId
+                hospitalId:
+                  type: string
+                  description: Updated hospital ObjectId
+      responses:
+        '200':
+          description: Record updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Vaccination record updated successfully }
+                  data:
+                    $ref: '#/components/schemas/Record'
+        '400':
+          description: Invalid record ID format or validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires HospitalStaff or Admin role
+        '404':
+          description: Vaccination record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+
+    delete:
+      summary: Delete a Record
+      description: >
+        Delete a vaccination record and cascade-delete all associated side effects.
+        Requires HospitalStaff or Admin role.
+      security:
+        - bearerAuth: []
+      tags:
+        - Records
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the vaccination record
+      responses:
+        '200':
+          description: Record and associated side effects deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Vaccination record and associated side effects deleted successfully }
+        '400':
+          description: Invalid record ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires HospitalStaff or Admin role
+        '404':
+          description: Vaccination record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+
+  # ════════════════════════════════════════════════════════════
+  # SIDE EFFECTS
+  # ════════════════════════════════════════════════════════════
+  /side-effects:
+    post:
+      summary: Report a side effect
+      description: >
+        Report a side effect for a vaccination record.
+        The logged-in user must own the vaccination record.
+      security:
+        - bearerAuth: []
+      tags:
+        - SideEffects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recordId, symptoms]
+              properties:
+                recordId:
+                  type: string
+                  description: ObjectId of the vaccination record
+                  example: 665d4e5f6a7b8c9d0e1f2a3b
+                symptoms:
+                  type: array
+                  items:
+                    type: string
+                  description: List of symptoms
+                  example: ['Fever', 'Headache']
+                severity:
+                  type: string
+                  enum: [Mild, Moderate, Severe]
+                  description: Severity level (defaults to Mild)
+      responses:
+        '201':
+          description: Side effect reported successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Side effect reported successfully }
+                  data:
+                    $ref: '#/components/schemas/SideEffect'
+        '400':
+          description: Missing required fields or invalid record ID
+        '401':
+          description: Not authorized
+        '403':
+          description: Can only report side effects for own vaccinations
+        '404':
+          description: Vaccination record not found
+        '500':
+          description: Internal server error
+
+    get:
+      summary: Get all Side Effects
+      description: >
+        Retrieve all side effect reports with populated references.
+        Supports optional query filters. Requires Admin role.
+      security:
+        - bearerAuth: []
+      tags:
+        - SideEffects
+      parameters:
+        - in: query
+          name: severity
+          schema:
+            type: string
+            enum: [Mild, Moderate, Severe]
+          description: Filter by severity level
+        - in: query
+          name: userId
+          schema:
+            type: string
+          description: Filter by user ObjectId
+      responses:
+        '200':
+          description: A list of side effect reports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  count: { type: integer, example: 15 }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SideEffect'
+        '401':
+          description: Not authorized
+        '403':
+          description: Forbidden — requires Admin role
+        '500':
+          description: Internal server error
+
+  /side-effects/my:
+    get:
+      summary: Get my side effect reports
+      description: >
+        Retrieve side effects reported by the currently authenticated user.
+        Returns reports sorted by date reported (newest first).
+      security:
+        - bearerAuth: []
+      tags:
+        - SideEffects
+      responses:
+        '200':
+          description: User's side effect reports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  count: { type: integer, example: 3 }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SideEffect'
+        '401':
+          description: Not authorized
+        '500':
+          description: Internal server error
+
+  /side-effects/{id}:
+    get:
+      summary: Get Side Effect by ID
+      description: >
+        Retrieve a single side effect report by its ID.
+        Users can view their own reports. Staff/Admin can view any report.
+      security:
+        - bearerAuth: []
+      tags:
+        - SideEffects
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the side effect report
+      responses:
+        '200':
+          description: Side effect report found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    $ref: '#/components/schemas/SideEffect'
+        '400':
+          description: Invalid side effect ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Not authorized
+        '403':
+          description: Not authorized to view this report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Side effect report not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+
+    put:
+      summary: Update a Side Effect
+      description: >
+        Update an existing side effect report. Only symptoms and severity
+        can be modified. Users can update their own reports.
+        Staff/Admin can update any report.
+      security:
+        - bearerAuth: []
+      tags:
+        - SideEffects
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the side effect report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                symptoms:
+                  type: array
+                  items:
+                    type: string
+                  description: Updated list of symptoms
+                severity:
+                  type: string
+                  enum: [Mild, Moderate, Severe]
+                  description: Updated severity level
+      responses:
+        '200':
+          description: Side effect report updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Side effect report updated successfully }
+                  data:
+                    $ref: '#/components/schemas/SideEffect'
+        '400':
+          description: Invalid ID format or validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Not authorized
+        '403':
+          description: Not authorized to update this report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Side effect report not found
+        '500':
+          description: Internal server error
+
+    delete:
+      summary: Delete a Side Effect
+      description: >
+        Delete a side effect report. Users can delete their own reports.
+        Admin can delete any report.
+      security:
+        - bearerAuth: []
+      tags:
+        - SideEffects
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: The ObjectId of the side effect report
+      responses:
+        '200':
+          description: Side effect report deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Side effect report deleted successfully }
+        '400':
+          description: Invalid side effect ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Not authorized
+        '403':
+          description: Not authorized to delete this report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Side effect report not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error

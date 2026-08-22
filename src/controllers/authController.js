@@ -1,0 +1,182 @@
+import jwt from "jsonwebtoken";
+import User from "../models/User.js";
+import mongoose from "mongoose";
+import { deleteImage, uploadImage } from "../services/cloudinaryService.js";
+
+// Helper Function: Generate JWT Token
+const generateToken = (id, role) => {
+  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
+    expiresIn: "30d", // Token expires in 30 days
+  });
+};
+// @desc    Register a new user
+// @route   POST /api/users
+// @access  Public
+const registerUser = async (req, res) => {
+  const { name, email, password, role, nic, phone, address, dependents } = req.body;
+
+  // 1. Check if user already exists
+  const userExists = await User.findOne({ email });
+
+  if (userExists) {
+    res.status(400);
+    throw new Error("User already exists");
+  }
+
+  // 2. Create the user
+  const user = await User.create({
+    name,
+    email,
+    password, // (Will be hashed automatically by our Model)
+    role,
+    nic,
+    phone,
+    address,
+    dependents,
+  });
+
+  // 3. specific response if successful
+  if (user) {
+    res.status(201).json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      profilePicture: user.profilePicture,
+      token: generateToken(user._id, user.role), // Give them a token immediately
+    });
+  } else {
+    res.status(400);
+    throw new Error("Invalid user data");
+  }
+};
+// @desc    Auth user & get token
+// @route   POST /api/users/login
+// @access  Public
+const authUser = async (req, res) => {
+  const { email, password } = req.body;
+
+  // 1. Find user by email
+  const user = await User.findOne({ email });
+
+  // 2. Check if user exists AND password matches
+  if (user && (await user.matchPassword(password))) {
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      profilePicture: user.profilePicture,
+      token: generateToken(user._id, user.role), // Give them a fresh token
+    });
+  } else {
+    res.status(401);
+    throw new Error("Invalid email or password");
+  }
+};
+
+// @desc    Search patients by NIC, name, or ObjectId (Staff/Admin only)
+// @route   GET /api/users/search?q=<query>
+// @access  Private (Staff/Admin)
+const searchUsers = async (req, res) => {
+  const { q } = req.query;
+
+  if (!q || !q.trim()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Query parameter "q" is required',
+    });
+  }
+
+  try {
+    const query = q.trim();
+    let users = [];
+
+    // Try ObjectId match first
+    if (mongoose.isValidObjectId(query)) {
+      const user = await User.findById(query).select('name email nic role phone');
+      if (user && user.role === 'Public') users = [user];
+    }
+
+    // If no ObjectId match, search by NIC or name
+    if (users.length === 0) {
+      users = await User.find({
+        role: 'Public',
+        $or: [
+          { nic: { $regex: `^${query}`, $options: 'i' } },
+          { name: { $regex: query, $options: 'i' } },
+        ],
+      })
+        .select('name email nic role phone')
+        .limit(10);
+    }
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      data: users,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error while searching patients',
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Update user profile
+// @route   PUT /api/users/profile
+// @access  Private
+const updateUserProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    user.name = req.body.name || user.name;
+    user.email = req.body.email || user.email;
+    user.phone = req.body.phone || user.phone;
+    user.nic = req.body.nic || user.nic;
+    user.address = req.body.address || user.address;
+
+    if (req.body.password) {
+      user.password = req.body.password;
+    }
+
+    // Handle profile picture upload to Cloudinary (vaxtrack/profiles folder)
+    if (req.file) {
+      // Delete the old profile picture from Cloudinary if it exists
+      if (user.profilePicture) {
+        await deleteImage(user.profilePicture);
+      }
+      user.profilePicture = await uploadImage(req.file.buffer, "vaxtrack/profiles");
+    }
+
+    const updatedUser = await user.save();
+
+    res.json({
+      _id: updatedUser._id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      role: updatedUser.role,
+      phone: updatedUser.phone,
+      nic: updatedUser.nic,
+      address: updatedUser.address,
+      profilePicture: updatedUser.profilePicture,
+      token: generateToken(updatedUser._id, updatedUser.role),
+    });
+  } catch (error) {
+    console.error("updateUserProfile error:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update profile",
+      error: error.message,
+    });
+  }
+};
+
+export { authUser, registerUser, searchUsers, updateUserProfile };
+

@@ -1,0 +1,618 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+		"name": "VaxTrack - Appointments & Queue (Saniru)",
+		"description": "API collection for the Appointments & Queue Management module of VaxTrack.\n\nIncludes endpoints for booking appointments, viewing queues, updating statuses, and cancellation.\n\nBase URL: http://localhost:5000/api\n\n**Authentication:** Most endpoints require a Bearer JWT token obtained from POST /api/users/login.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5000/api",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "appointmentId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "clinicId",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "Book a new Appointment",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"clinicId\": \"665b2c3d4e5f6a7b8c9d0e1f\",\n  \"dependentId\": null\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/appointments",
+					"host": ["{{baseUrl}}"],
+					"path": ["appointments"]
+				},
+				"description": "Book a vaccination appointment for the logged-in user or one of their dependents.\n\nChecks clinic capacity and prevents double-booking. Generates a QR code (stored in `qrCodeUrl`) after a successful booking.\n\n**Required fields:** `clinicId`\n\n**Optional fields:** `dependentId` (omit or null to book for self)\n\n**Auth:** Bearer token required"
+			},
+			"response": [
+				{
+					"name": "201 - Appointment booked successfully",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"clinicId\": \"665b2c3d4e5f6a7b8c9d0e1f\",\n  \"dependentId\": null\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/appointments",
+							"host": ["{{baseUrl}}"],
+							"path": ["appointments"]
+						}
+					},
+					"status": "Created",
+					"code": 201,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": true,\n  \"message\": \"Appointment booked successfully\",\n  \"data\": {\n    \"_id\": \"665c3d4e5f6a7b8c9d0e1f2a\",\n    \"clinicId\": \"665b2c3d4e5f6a7b8c9d0e1f\",\n    \"userId\": \"507f1f77bcf86cd799439011\",\n    \"dependentId\": null,\n    \"queueNumber\": 7,\n    \"status\": \"Pending\",\n    \"qrCodeUrl\": \"https://api.qrserver.com/v1/create-qr-code/?data=appointmentId:665c3d4e5f6a7b8c9d0e1f2a\",\n    \"bookedAt\": \"2026-03-02T18:00:00.000Z\",\n    \"createdAt\": \"2026-03-02T18:00:00.000Z\",\n    \"updatedAt\": \"2026-03-02T18:00:00.000Z\"\n  }\n}"
+				},
+				{
+					"name": "400 - Bad request",
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"clinicId is required\"\n}"
+				},
+				{
+					"name": "404 - Clinic not found",
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Clinic not found\"\n}"
+				},
+				{
+					"name": "409 - Conflict (fully booked / duplicate)",
+					"status": "Conflict",
+					"code": 409,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Clinic is fully booked\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Get all Appointments (Admin)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/appointments?status=&clinicId=&userId=",
+					"host": ["{{baseUrl}}"],
+					"path": ["appointments"],
+					"query": [
+						{
+							"key": "status",
+							"value": "",
+							"description": "Filter by status: Pending, Completed, Cancelled, No-Show"
+						},
+						{
+							"key": "clinicId",
+							"value": "",
+							"description": "Filter by clinic ObjectId"
+						},
+						{
+							"key": "userId",
+							"value": "",
+							"description": "Filter by user ObjectId"
+						}
+					]
+				},
+				"description": "Retrieve all appointments across all users and clinics.\n\nSupports optional query filters: `status`, `clinicId`, `userId`.\n\n**Auth:** Bearer token required (Admin role)"
+			},
+			"response": [
+				{
+					"name": "200 - List of appointments",
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": true,\n  \"count\": 42,\n  \"data\": [\n    {\n      \"_id\": \"665c3d4e5f6a7b8c9d0e1f2a\",\n      \"clinicId\": \"665b2c3d4e5f6a7b8c9d0e1f\",\n      \"userId\": {\n        \"_id\": \"507f1f77bcf86cd799439011\",\n        \"name\": \"John Doe\",\n        \"email\": \"john@example.com\",\n        \"phone\": \"0771234567\"\n      },\n      \"dependentId\": null,\n      \"queueNumber\": 7,\n      \"status\": \"Pending\",\n      \"qrCodeUrl\": \"https://api.qrserver.com/v1/create-qr-code/?data=appointmentId:665c3d4e5f6a7b8c9d0e1f2a\",\n      \"bookedAt\": \"2026-03-02T18:00:00.000Z\",\n      \"createdAt\": \"2026-03-02T18:00:00.000Z\",\n      \"updatedAt\": \"2026-03-02T18:00:00.000Z\"\n    }\n  ]\n}"
+				},
+				{
+					"name": "403 - Forbidden (requires Admin)",
+					"status": "Forbidden",
+					"code": 403,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Not authorized as admin\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Get my Appointments",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/appointments/my",
+					"host": ["{{baseUrl}}"],
+					"path": ["appointments", "my"]
+				},
+				"description": "Retrieve all appointments belonging to the currently logged-in user.\n\n**Auth:** Bearer token required"
+			},
+			"response": [
+				{
+					"name": "200 - My appointments list",
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": true,\n  \"count\": 3,\n  \"data\": [\n    {\n      \"_id\": \"665c3d4e5f6a7b8c9d0e1f2a\",\n      \"clinicId\": {\n        \"_id\": \"665b2c3d4e5f6a7b8c9d0e1f\",\n        \"hospital\": {\n          \"_id\": \"665a1b2c3d4e5f6a7b8c9d0e\",\n          \"name\": \"Colombo General Hospital\",\n          \"city\": \"Colombo\",\n          \"district\": \"Colombo\"\n        },\n        \"date\": \"2026-04-15\",\n        \"startTime\": \"09:00\",\n        \"endTime\": \"12:00\",\n        \"vaccineType\": \"COVID-19\"\n      },\n      \"userId\": \"507f1f77bcf86cd799439011\",\n      \"dependentId\": null,\n      \"queueNumber\": 7,\n      \"status\": \"Pending\",\n      \"qrCodeUrl\": \"https://api.qrserver.com/v1/create-qr-code/?data=appointmentId:665c3d4e5f6a7b8c9d0e1f2a\",\n      \"bookedAt\": \"2026-03-02T18:00:00.000Z\",\n      \"createdAt\": \"2026-03-02T18:00:00.000Z\",\n      \"updatedAt\": \"2026-03-02T18:00:00.000Z\"\n    }\n  ]\n}"
+				}
+			]
+		},
+		{
+			"name": "Get Clinic Queue",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/appointments/clinic/{{clinicId}}",
+					"host": ["{{baseUrl}}"],
+					"path": ["appointments", "clinic", "{{clinicId}}"]
+				},
+				"description": "Retrieve all appointments for a specific clinic session, ordered by queue number.\n\n**Auth:** Bearer token required (HospitalStaff or Admin role)"
+			},
+			"response": [
+				{
+					"name": "200 - Clinic queue",
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": true,\n  \"count\": 12,\n  \"data\": [\n    {\n      \"_id\": \"665c3d4e5f6a7b8c9d0e1f2a\",\n      \"clinicId\": \"665b2c3d4e5f6a7b8c9d0e1f\",\n      \"userId\": {\n        \"_id\": \"507f1f77bcf86cd799439011\",\n        \"name\": \"John Doe\",\n        \"email\": \"john@example.com\",\n        \"phone\": \"0771234567\"\n      },\n      \"dependentId\": null,\n      \"queueNumber\": 1,\n      \"status\": \"Pending\",\n      \"qrCodeUrl\": \"https://api.qrserver.com/v1/create-qr-code/?data=appointmentId:665c3d4e5f6a7b8c9d0e1f2a\",\n      \"bookedAt\": \"2026-03-01T10:00:00.000Z\",\n      \"createdAt\": \"2026-03-01T10:00:00.000Z\",\n      \"updatedAt\": \"2026-03-01T10:00:00.000Z\"\n    }\n  ]\n}"
+				},
+				{
+					"name": "403 - Forbidden",
+					"status": "Forbidden",
+					"code": 403,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Not authorized as hospital staff or admin\"\n}"
+				},
+				{
+					"name": "404 - Clinic not found",
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Clinic not found\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Get Appointment by ID",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/appointments/{{appointmentId}}",
+					"host": ["{{baseUrl}}"],
+					"path": ["appointments", "{{appointmentId}}"]
+				},
+				"description": "Retrieve a single appointment by its ObjectId.\n\nUsers may only fetch their own appointments; Staff and Admin can fetch any.\n\n**Auth:** Bearer token required"
+			},
+			"response": [
+				{
+					"name": "200 - Appointment found",
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": true,\n  \"data\": {\n    \"_id\": \"665c3d4e5f6a7b8c9d0e1f2a\",\n    \"clinicId\": {\n      \"_id\": \"665b2c3d4e5f6a7b8c9d0e1f\",\n      \"hospital\": {\n        \"_id\": \"665a1b2c3d4e5f6a7b8c9d0e\",\n        \"name\": \"Colombo General Hospital\",\n        \"city\": \"Colombo\",\n        \"district\": \"Colombo\"\n      },\n      \"date\": \"2026-04-15\",\n      \"startTime\": \"09:00\",\n      \"endTime\": \"12:00\",\n      \"vaccineType\": \"COVID-19\",\n      \"capacity\": 50,\n      \"bookedCount\": 12\n    },\n    \"userId\": {\n      \"_id\": \"507f1f77bcf86cd799439011\",\n      \"name\": \"John Doe\",\n      \"email\": \"john@example.com\",\n      \"phone\": \"0771234567\"\n    },\n    \"dependentId\": null,\n    \"queueNumber\": 7,\n    \"status\": \"Pending\",\n    \"qrCodeUrl\": \"https://api.qrserver.com/v1/create-qr-code/?data=appointmentId:665c3d4e5f6a7b8c9d0e1f2a\",\n    \"bookedAt\": \"2026-03-02T18:00:00.000Z\",\n    \"createdAt\": \"2026-03-02T18:00:00.000Z\",\n    \"updatedAt\": \"2026-03-02T18:00:00.000Z\"\n  }\n}"
+				},
+				{
+					"name": "400 - Invalid appointment ID",
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Invalid appointment ID format\"\n}"
+				},
+				{
+					"name": "403 - Forbidden",
+					"status": "Forbidden",
+					"code": 403,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Not authorized to view this appointment\"\n}"
+				},
+				{
+					"name": "404 - Not found",
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Appointment not found\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Update an Appointment",
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"status\": \"Completed\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/appointments/{{appointmentId}}",
+					"host": ["{{baseUrl}}"],
+					"path": ["appointments", "{{appointmentId}}"]
+				},
+				"description": "Update the `status` of an appointment.\n\nIf status changes to `Cancelled` and the appointment was `Pending`, the clinic's `bookedCount` is decremented automatically.\n\n**Valid statuses:** Pending, Completed, Cancelled, No-Show\n\n**Auth:** Bearer token required (HospitalStaff or Admin role)"
+			},
+			"response": [
+				{
+					"name": "200 - Appointment updated",
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": true,\n  \"message\": \"Appointment updated successfully\",\n  \"data\": {\n    \"_id\": \"665c3d4e5f6a7b8c9d0e1f2a\",\n    \"clinicId\": \"665b2c3d4e5f6a7b8c9d0e1f\",\n    \"userId\": \"507f1f77bcf86cd799439011\",\n    \"dependentId\": null,\n    \"queueNumber\": 7,\n    \"status\": \"Completed\",\n    \"qrCodeUrl\": \"https://api.qrserver.com/v1/create-qr-code/?data=appointmentId:665c3d4e5f6a7b8c9d0e1f2a\",\n    \"bookedAt\": \"2026-03-02T18:00:00.000Z\",\n    \"createdAt\": \"2026-03-02T18:00:00.000Z\",\n    \"updatedAt\": \"2026-03-02T19:00:00.000Z\"\n  }\n}"
+				},
+				{
+					"name": "400 - Bad request",
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Invalid status value\"\n}"
+				},
+				{
+					"name": "404 - Not found",
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Appointment not found\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Delete an Appointment (Admin)",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/appointments/{{appointmentId}}",
+					"host": ["{{baseUrl}}"],
+					"path": ["appointments", "{{appointmentId}}"]
+				},
+				"description": "Permanently delete an appointment record.\n\nIf the appointment status was `Pending`, the clinic's `bookedCount` is decremented automatically to free the seat.\n\n**Auth:** Bearer token required (Admin role)"
+			},
+			"response": [
+				{
+					"name": "200 - Appointment deleted",
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": true,\n  \"message\": \"Appointment deleted successfully\"\n}"
+				},
+				{
+					"name": "400 - Invalid ID",
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Invalid appointment ID format\"\n}"
+				},
+				{
+					"name": "404 - Not found",
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Appointment not found\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Cancel an Appointment",
+			"request": {
+				"method": "PATCH",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/appointments/{{appointmentId}}/cancel",
+					"host": ["{{baseUrl}}"],
+					"path": ["appointments", "{{appointmentId}}", "cancel"]
+				},
+				"description": "Cancel a `Pending` appointment. The clinic's `bookedCount` is decremented automatically.\n\nOnly the appointment owner, HospitalStaff, or Admin may cancel.\n\n**Auth:** Bearer token required"
+			},
+			"response": [
+				{
+					"name": "200 - Appointment cancelled",
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": true,\n  \"message\": \"Appointment cancelled successfully\",\n  \"data\": {\n    \"_id\": \"665c3d4e5f6a7b8c9d0e1f2a\",\n    \"clinicId\": \"665b2c3d4e5f6a7b8c9d0e1f\",\n    \"userId\": \"507f1f77bcf86cd799439011\",\n    \"dependentId\": null,\n    \"queueNumber\": 7,\n    \"status\": \"Cancelled\",\n    \"qrCodeUrl\": \"https://api.qrserver.com/v1/create-qr-code/?data=appointmentId:665c3d4e5f6a7b8c9d0e1f2a\",\n    \"bookedAt\": \"2026-03-02T18:00:00.000Z\",\n    \"createdAt\": \"2026-03-02T18:00:00.000Z\",\n    \"updatedAt\": \"2026-03-02T20:00:00.000Z\"\n  }\n}"
+				},
+				{
+					"name": "400 - Not in Pending status",
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Appointment is not in Pending status\"\n}"
+				},
+				{
+					"name": "403 - Forbidden",
+					"status": "Forbidden",
+					"code": 403,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Not authorized to cancel this appointment\"\n}"
+				},
+				{
+					"name": "404 - Not found",
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Appointment not found\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Update Appointment Status",
+			"request": {
+				"method": "PATCH",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"status\": \"Completed\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/appointments/{{appointmentId}}/status",
+					"host": ["{{baseUrl}}"],
+					"path": ["appointments", "{{appointmentId}}", "status"]
+				},
+				"description": "Mark an appointment as `Completed` or `No-Show`.\n\n**Valid statuses:** Completed, No-Show\n\n**Auth:** Bearer token required (HospitalStaff or Admin role)"
+			},
+			"response": [
+				{
+					"name": "200 - Status updated",
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": true,\n  \"message\": \"Appointment marked as Completed\",\n  \"data\": {\n    \"_id\": \"665c3d4e5f6a7b8c9d0e1f2a\",\n    \"clinicId\": \"665b2c3d4e5f6a7b8c9d0e1f\",\n    \"userId\": \"507f1f77bcf86cd799439011\",\n    \"dependentId\": null,\n    \"queueNumber\": 7,\n    \"status\": \"Completed\",\n    \"qrCodeUrl\": \"https://api.qrserver.com/v1/create-qr-code/?data=appointmentId:665c3d4e5f6a7b8c9d0e1f2a\",\n    \"bookedAt\": \"2026-03-02T18:00:00.000Z\",\n    \"createdAt\": \"2026-03-02T18:00:00.000Z\",\n    \"updatedAt\": \"2026-03-02T21:00:00.000Z\"\n  }\n}"
+				},
+				{
+					"name": "400 - Invalid status",
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Invalid status value. Allowed: Completed, No-Show\"\n}"
+				},
+				{
+					"name": "403 - Forbidden",
+					"status": "Forbidden",
+					"code": 403,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Not authorized as hospital staff or admin\"\n}"
+				},
+				{
+					"name": "404 - Not found",
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"body": "{\n  \"success\": false,\n  \"message\": \"Appointment not found\"\n}"
+				}
+			]
+		}
+	]
+}

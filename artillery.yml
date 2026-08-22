@@ -1,0 +1,197 @@
+config:
+  target: "http://localhost:5000"
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      name: "Warm up"
+    - duration: 60
+      arrivalRate: 20
+      name: "Load test"
+    - duration: 30
+      arrivalRate: 50
+      name: "Stress test"
+
+  # Shared variables — replace with real seeded accounts in your DB before running
+  variables:
+    testEmail: "testuser@vaxtrack.lk"
+    testPassword: "Test@1234"
+    staffEmail: "staff@vaxtrack.lk"
+    staffPassword: "Staff@1234"
+
+scenarios:
+  # ── 1. Public read-only endpoints (no auth required) ──────────────────────
+  - name: "Public - Health, Hospitals, Clinics, Vaccines"
+    weight: 20
+    flow:
+      # Health check
+      - get:
+          url: "/"
+
+      # GET /api/hospitals  — public
+      - get:
+          url: "/api/hospitals"
+
+      # GET /api/clinics  — public (query params, NOT /clinics/search)
+      - get:
+          url: "/api/clinics"
+      - get:
+          url: "/api/clinics?vaccineType=Pfizer"
+      - get:
+          url: "/api/clinics?city=Colombo"
+      - get:
+          url: "/api/clinics?city=Kandy&vaccineType=Moderna"
+
+      # GET /api/vaccines  — public
+      - get:
+          url: "/api/vaccines"
+
+      # GET /api/inventory/low-stock  — public (no protect middleware)
+      - get:
+          url: "/api/inventory/low-stock"
+
+  # ── 2. Auth flow ───────────────────────────────────────────────────────────
+  - name: "Auth - Register & Login"
+    weight: 10
+    flow:
+      # Invalid login → 401
+      - post:
+          url: "/api/users/login"
+          json:
+            email: "nobody@vaxtrack.lk"
+            password: "wrongpassword"
+          expect:
+            - statusCode: 401
+
+      # Valid login → 200 + token
+      - post:
+          url: "/api/users/login"
+          json:
+            email: "{{ testEmail }}"
+            password: "{{ testPassword }}"
+          capture:
+            - json: "$.token"
+              as: "userToken"
+          expect:
+            - statusCode: 200
+
+      # Get own profile  →  GET /api/users/profile
+      - get:
+          url: "/api/users/profile"
+          headers:
+            Authorization: "Bearer {{ userToken }}"
+
+  # ── 3. Patient authenticated flows ────────────────────────────────────────
+  - name: "Patient - Appointments, Records & Dependents"
+    weight: 25
+    flow:
+      # Login to get token
+      - post:
+          url: "/api/users/login"
+          json:
+            email: "{{ testEmail }}"
+            password: "{{ testPassword }}"
+          capture:
+            - json: "$.token"
+              as: "userToken"
+
+      # GET /api/appointments/my  — own appointments
+      - get:
+          url: "/api/appointments/my"
+          headers:
+            Authorization: "Bearer {{ userToken }}"
+
+      # GET /api/users/dependents  — own dependents
+      - get:
+          url: "/api/users/dependents"
+          headers:
+            Authorization: "Bearer {{ userToken }}"
+
+      # GET /api/records/my  — own vaccination records
+      - get:
+          url: "/api/records/my"
+          headers:
+            Authorization: "Bearer {{ userToken }}"
+
+      # GET /api/records/history  — self + dependents history
+      - get:
+          url: "/api/records/history"
+          headers:
+            Authorization: "Bearer {{ userToken }}"
+
+      # GET /api/records/due  — upcoming/due vaccinations
+      - get:
+          url: "/api/records/due"
+          headers:
+            Authorization: "Bearer {{ userToken }}"
+
+      # GET /api/side-effects/my  — OWN side effects (NOT /api/side-effects which is adminOnly)
+      - get:
+          url: "/api/side-effects/my"
+          headers:
+            Authorization: "Bearer {{ userToken }}"
+
+  # ── 4. Staff / Admin authenticated flows ──────────────────────────────────
+  - name: "Staff - Queue, Batches, Records & Search"
+    weight: 25
+    flow:
+      # Login as staff
+      - post:
+          url: "/api/users/login"
+          json:
+            email: "{{ staffEmail }}"
+            password: "{{ staffPassword }}"
+          capture:
+            - json: "$.token"
+              as: "staffToken"
+
+      # GET /api/batches  — staffOnly
+      - get:
+          url: "/api/batches"
+          headers:
+            Authorization: "Bearer {{ staffToken }}"
+
+      # GET /api/clinics  — public but shown here with auth context
+      - get:
+          url: "/api/clinics"
+          headers:
+            Authorization: "Bearer {{ staffToken }}"
+
+      # GET /api/inventory/low-stock  — staff view of inventory alerts
+      - get:
+          url: "/api/inventory/low-stock"
+          headers:
+            Authorization: "Bearer {{ staffToken }}"
+
+      # GET /api/records  — all records (staffOnly)
+      - get:
+          url: "/api/records"
+          headers:
+            Authorization: "Bearer {{ staffToken }}"
+
+      # GET /api/side-effects  — all side effects (adminOnly — staff may get 403, tests boundary)
+      - get:
+          url: "/api/side-effects"
+          headers:
+            Authorization: "Bearer {{ staffToken }}"
+
+      # GET /api/users/search?q=  — search patients by NIC/name (staffOnly)
+      - get:
+          url: "/api/users/search?q=test"
+          headers:
+            Authorization: "Bearer {{ staffToken }}"
+
+  # ── 5. Clinic & hospital detail lookups ───────────────────────────────────
+  - name: "Detail lookups - Clinics by hospital, Hospitals"
+    weight: 20
+    flow:
+      # All hospitals (public)
+      - get:
+          url: "/api/hospitals"
+
+      # All clinics (public)
+      - get:
+          url: "/api/clinics"
+
+      # Clinics filtered by vaccine (public query params)
+      - get:
+          url: "/api/clinics?vaccineType=AstraZeneca"

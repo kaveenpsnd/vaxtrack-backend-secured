@@ -1,0 +1,47 @@
+{
+  "name": "vaxtrack-backend",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "src/server.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --verbose",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test:perf": "artillery run artillery.yml",
+    "test:perf:cloud": "artillery run artillery.yml --target ${PERF_TARGET:-https://vaxtrack-api.onrender.com}"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.13.5",
+    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.9.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.1.6",
+    "morgan": "^1.10.1",
+    "multer": "^2.0.2",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^8.0.1",
+    "swagger-ui-express": "^5.0.1",
+    "yamljs": "^0.3.0"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.2.0",
+    "artillery": "^2.0.30",
+    "jest": "^30.2.0",
+    "nodemon": "^3.1.11"
+  },
+  "overrides": {
+    "glob": "^13.0.5",
+    "minimatch": "^10.2.1"
+  }
+}

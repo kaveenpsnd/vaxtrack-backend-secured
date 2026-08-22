@@ -1,0 +1,30 @@
+import express from 'express';
+import { registerUser, authUser, searchUsers, updateUserProfile } from '../controllers/authController.js';
+import { protect, staffOnly } from '../middleware/authMiddleware.js';
+import upload from '../middleware/uploadMiddleware.js';
+
+const router = express.Router();
+
+// Route 1: Registration
+// POST /api/users
+router.post('/', registerUser);
+
+// Route 2: Login
+// POST /api/users/login
+router.post('/login', authUser);
+
+// Route 3: Get My Profile (Protected)
+// GET /api/users/profile
+router.get('/profile', protect, (req, res) => {
+  res.json(req.user);
+});
+
+// Route 4: Update My Profile (Protected)
+// PUT /api/users/profile
+router.put('/profile', protect, upload.single('profilePicture'), updateUserProfile);
+
+// Route 5: Search patients by NIC / name / ID (Staff/Admin only)
+// GET /api/users/search?q=<query>
+router.get('/search', protect, staffOnly, searchUsers);
+
+export default router;

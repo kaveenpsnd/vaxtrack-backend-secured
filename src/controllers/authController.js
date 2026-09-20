@@ -13,7 +13,9 @@ const generateToken = (id, role) => {
 // @route   POST /api/users
 // @access  Public
 const registerUser = async (req, res) => {
-  const { name, email, password, role, nic, phone, address, dependents } = req.body;
+  // SECURITY: `role` is intentionally NOT read from req.body. Public registration
+  // must never be able to choose its own role (privilege escalation, issue #1).
+  const { name, email, password, nic, phone, address, dependents } = req.body;
 
   // 1. Check if user already exists
   const userExists = await User.findOne({ email });
@@ -28,7 +30,7 @@ const registerUser = async (req, res) => {
     name,
     email,
     password, // (Will be hashed automatically by our Model)
-    role,
+    role: "Public", // Forced server-side; ignores any role sent by the client
     nic,
     phone,
     address,

@@ -84,6 +84,40 @@ describe("Auth Controller", () => {
       expect(decoded.role).toBe(VALID_USER.role);
     });
 
+    test("should force role to Public and ignore a client-supplied role (issue #1)", async () => {
+      mockUserFindOne.mockResolvedValue(null);
+      mockUserCreate.mockImplementation(async (doc) => ({
+        _id: VALID_USER._id,
+        ...doc,
+      }));
+
+      const req = { body: { ...validBody, role: "Admin" } };
+      const res = mockRes();
+
+      await registerUser(req, res);
+
+      // The role passed to the model must be Public regardless of the request
+      expect(mockUserCreate).toHaveBeenCalledTimes(1);
+      const createdDoc = mockUserCreate.mock.calls[0][0];
+      expect(createdDoc.role).toBe("Public");
+
+      // All other registration fields still pass through untouched
+      expect(createdDoc).toMatchObject({
+        name: validBody.name,
+        email: validBody.email,
+        password: validBody.password,
+        nic: validBody.nic,
+        phone: validBody.phone,
+      });
+
+      // Response and JWT must reflect the forced role, not the requested one
+      expect(res.status).toHaveBeenCalledWith(201);
+      const responseData = res.json.mock.calls[0][0];
+      expect(responseData.role).toBe("Public");
+      const decoded = jwt.verify(responseData.token, process.env.JWT_SECRET);
+      expect(decoded.role).toBe("Public");
+    });
+
     test("should return 400 if user already exists", async () => {
       mockUserFindOne.mockResolvedValue(VALID_USER); // user already exists
 

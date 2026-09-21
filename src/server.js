@@ -29,6 +29,10 @@ dotenv.config();
 
 const app = express();
 
+// Behind Render's reverse proxy: trust the first X-Forwarded-For hop so
+// req.ip is the real client address (used by the per-IP rate limiters).
+app.set("trust proxy", 1);
+
 // Middleware
 app.use(express.json());
 app.use(cors());

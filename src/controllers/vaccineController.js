@@ -1,5 +1,6 @@
 import Vaccine from "../models/Vaccine.js";
 import { deleteImage, uploadImage } from "../services/cloudinaryService.js";
+import { escapeRegex } from "../helpers/regexHelper.js";
 
 // ──────────────────────────────────────────────
 // @desc    Create a new vaccine
@@ -105,7 +106,7 @@ const getAllVaccines = async (req, res) => {
     const { manufacturer } = req.query;
 
     const filter = {};
-    if (manufacturer) filter.manufacturer = { $regex: manufacturer, $options: "i" };
+    if (manufacturer) filter.manufacturer = { $regex: escapeRegex(manufacturer), $options: "i" };
 
     const vaccines = await Vaccine.find(filter).sort({ createdAt: -1 });
 

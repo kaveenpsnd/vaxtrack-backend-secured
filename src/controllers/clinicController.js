@@ -1,5 +1,6 @@
 import Clinic from '../models/Clinic.js';
 import Hospital from '../models/Hospital.js';
+import { escapeRegex } from '../helpers/regexHelper.js';
 
 // ──────────────────────────────────────────────
 // @desc    Create a new clinic session
@@ -164,7 +165,7 @@ const getAllClinics = async (req, res) => {
         }
 
         if (req.query.vaccineType) {
-            filter.vaccineType = { $regex: req.query.vaccineType, $options: 'i' };
+            filter.vaccineType = { $regex: escapeRegex(req.query.vaccineType), $options: 'i' };
         }
 
         const clinics = await Clinic.find(filter)
@@ -216,7 +217,7 @@ const getClinicsByHospital = async (req, res) => {
         }
 
         if (req.query.vaccineType) {
-            filter.vaccineType = { $regex: req.query.vaccineType, $options: 'i' };
+            filter.vaccineType = { $regex: escapeRegex(req.query.vaccineType), $options: 'i' };
         }
 
         const clinics = await Clinic.find(filter)

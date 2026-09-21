@@ -2,16 +2,17 @@ import express from 'express';
 import { registerUser, authUser, searchUsers, updateUserProfile } from '../controllers/authController.js';
 import { protect, staffOnly } from '../middleware/authMiddleware.js';
 import upload from '../middleware/uploadMiddleware.js';
+import { loginLimiter, registerLimiter } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
 // Route 1: Registration
 // POST /api/users
-router.post('/', registerUser);
+router.post('/', registerLimiter, registerUser);
 
 // Route 2: Login
 // POST /api/users/login
-router.post('/login', authUser);
+router.post('/login', loginLimiter, authUser);
 
 // Route 3: Get My Profile (Protected)
 // GET /api/users/profile

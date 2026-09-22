@@ -8,6 +8,7 @@ import path from "path";
 import swaggerUi from "swagger-ui-express";
 import YAML from "yamljs";
 import connectDB from "./config/db.js";
+import corsOptions from "./config/corsOptions.js";
 import { startCronJobs } from "./services/cronService.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -35,7 +36,9 @@ app.set("trust proxy", 1);
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+// Only the origins we ship a browser client on may read API responses.
+// A bare cors() would send Access-Control-Allow-Origin: * to every site.
+app.use(cors(corsOptions));
 app.use(helmet());
 app.use(morgan("dev"));
 

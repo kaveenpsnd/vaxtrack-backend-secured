@@ -70,7 +70,10 @@ app.use("/api/appointments", appointmentRoutes);
 app.use("/api/notifications", notificationRoutes);
 // Global Error Handler
 app.use((err, req, res, next) => {
-  const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+  const isClientError =
+    err.name === "MulterError" ||
+    (err.message && err.message.includes("Only JPEG, PNG, and WebP images are allowed"));
+  const statusCode = isClientError ? 400 : (res.statusCode === 200 ? 500 : res.statusCode);
   res.status(statusCode).json({
     success: false,
     message: err.message,

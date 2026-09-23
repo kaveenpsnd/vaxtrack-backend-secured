@@ -2732,6 +2732,8 @@ paths:
           description: Invalid record data
         '401':
           description: Not authorized
+        '403':
+          description: Forbidden — requires HospitalStaff or Admin role
         '404':
           description: Patient not found
         '500':

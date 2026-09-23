@@ -16,8 +16,8 @@ const generateToken = (id, role) => {
 const setTokenCookie = (res, token) => {
   res.cookie("jwt", token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    secure: true, // MUST be true for cross-site cookies
+    sameSite: "none", // Allows Netlify frontend to send cookie to Render backend
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 };
@@ -67,6 +67,7 @@ const registerUser = async (req, res) => {
     throw new Error("Invalid user data");
   }
 };
+
 // @desc    Auth user & get token
 // @route   POST /api/users/login
 // @access  Public
@@ -92,6 +93,19 @@ const authUser = async (req, res) => {
     res.status(401);
     throw new Error("Invalid email or password");
   }
+};
+
+// @desc    Logout user / clear cookie
+// @route   POST /api/users/logout
+// @access  Public
+const logoutUser = (req, res) => {
+  res.cookie('jwt', '', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    expires: new Date(0), // Immediately expire the cookie
+  });
+  res.status(200).json({ message: 'Logged out successfully' });
 };
 
 // @desc    Search patients by NIC, name, or ObjectId (Staff/Admin only)
@@ -206,6 +220,5 @@ const updateUserProfile = async (req, res) => {
   }
 };
 
-export { authUser, registerUser, searchUsers, updateUserProfile };
-
-
+// Added logoutUser to exports
+export { authUser, registerUser, searchUsers, updateUserProfile, logoutUser };

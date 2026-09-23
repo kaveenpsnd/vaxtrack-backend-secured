@@ -4,9 +4,11 @@ import User from '../models/User.js';
 const protect = async (req, res, next) => {
   let token;
 
-  // Extract token from cookie (req.cookies.jwt)
+  // Extract the cookie first, but keep Bearer support for non-browser API clients.
   if (req.cookies && req.cookies.jwt) {
     token = req.cookies.jwt;
+  } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
   }
 
   if (token) {

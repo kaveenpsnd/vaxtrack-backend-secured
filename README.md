@@ -81,6 +81,7 @@ cp .env.example .env
 | `NODE_ENV`           | `development` or `production`     |
 | `MONGODB_URL`        | MongoDB connection string         |
 | `JWT_SECRET`         | Secret key for signing JWTs       |
+| `CORS_ORIGINS`       | Allowed browser origins (CSV)     |
 | `CLOUDINARY_URL`     | Cloudinary credentials URL        |
 | `LOCATIONIQ_API_KEY` | LocationIQ geocoding API key      |
 | `EMAIL_HOST`         | SMTP host (e.g. `smtp.gmail.com`) |
@@ -88,6 +89,18 @@ cp .env.example .env
 | `EMAIL_USER`         | SMTP username                     |
 | `EMAIL_PASS`         | SMTP password / app key           |
 | `EMAIL_FROM`         | Default sender address            |
+
+#### Allowed Browser Origins (`CORS_ORIGINS`)
+
+Only the origins listed here may call the API from a browser. Give a comma-separated list with no trailing slash:
+
+```bash
+CORS_ORIGINS=https://vaxtrackweb.netlify.app,http://localhost:5173
+```
+
+If the variable is unset, the deployed frontend (`https://vaxtrackweb.netlify.app`) and the local Vite dev server (`http://localhost:5173`) are allowed. A request from any other origin gets no `Access-Control-Allow-Origin` header, so the browser blocks the response. Deploying the frontend to a new URL means adding that URL here, otherwise its requests fail in the browser.
+
+Note that CORS is enforced by browsers only. It does not restrict curl, Postman or server-to-server calls, and it is not a substitute for authentication, authorization or rate limiting.
 
 ### Running the Server
 

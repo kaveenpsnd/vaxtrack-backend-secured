@@ -117,5 +117,9 @@ describe("CORS configuration (Finding #6)", () => {
       expect(corsOptions.origin).not.toBe("*");
       expect(corsOptions.origin).not.toBe(true);
     });
+
+    test("enables credentials for cookie authentication", () => {
+      expect(corsOptions.credentials).toBe(true);
+    });
   });
 });

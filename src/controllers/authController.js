@@ -11,6 +11,17 @@ const generateToken = (id, role) => {
     expiresIn: "30d", // Token expires in 30 days
   });
 };
+
+// Helper Function: Set JWT Token Cookie
+const setTokenCookie = (res, token) => {
+  res.cookie("jwt", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+  });
+};
+
 // @desc    Register a new user
 // @route   POST /api/users
 // @access  Public
@@ -41,13 +52,15 @@ const registerUser = async (req, res) => {
 
   // 3. specific response if successful
   if (user) {
+    const token = generateToken(user._id, user.role);
+    setTokenCookie(res, token);
+
     res.status(201).json({
       _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
       profilePicture: user.profilePicture,
-      token: generateToken(user._id, user.role), // Give them a token immediately
     });
   } else {
     res.status(400);
@@ -65,13 +78,15 @@ const authUser = async (req, res) => {
 
   // 2. Check if user exists AND password matches
   if (user && (await user.matchPassword(password))) {
+    const token = generateToken(user._id, user.role);
+    setTokenCookie(res, token);
+
     res.json({
       _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
       profilePicture: user.profilePicture,
-      token: generateToken(user._id, user.role), // Give them a fresh token
     });
   } else {
     res.status(401);
@@ -168,6 +183,9 @@ const updateUserProfile = async (req, res) => {
 
     const updatedUser = await user.save();
 
+    const token = generateToken(updatedUser._id, updatedUser.role);
+    setTokenCookie(res, token);
+
     res.json({
       _id: updatedUser._id,
       name: updatedUser.name,
@@ -177,7 +195,6 @@ const updateUserProfile = async (req, res) => {
       nic: updatedUser.nic,
       address: updatedUser.address,
       profilePicture: updatedUser.profilePicture,
-      token: generateToken(updatedUser._id, updatedUser.role),
     });
   } catch (error) {
     console.error("updateUserProfile error:", error.message);
@@ -190,4 +207,5 @@ const updateUserProfile = async (req, res) => {
 };
 
 export { authUser, registerUser, searchUsers, updateUserProfile };
+
 

@@ -4,16 +4,13 @@ import User from '../models/User.js';
 const protect = async (req, res, next) => {
   let token;
 
-  // Check if the "Authorization" header exists and starts with "Bearer"
-  // Format: "Bearer <token12345>"
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
-  ) {
-    try {
-      // Get the token from the header (remove the "Bearer " part)
-      token = req.headers.authorization.split(' ')[1];
+  // Extract token from cookie (req.cookies.jwt)
+  if (req.cookies && req.cookies.jwt) {
+    token = req.cookies.jwt;
+  }
 
+  if (token) {
+    try {
       // 1. Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
@@ -28,15 +25,12 @@ const protect = async (req, res, next) => {
         throw new Error('Not authorized, user not found');
       }
       next();
-
     } catch (error) {
       console.error(error);
       res.status(401);
       throw new Error('Not authorized, token failed');
     }
-  }
-
-  if (!token) {
+  } else {
     res.status(401);
     throw new Error('Not authorized, no token');
   }

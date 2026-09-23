@@ -61,9 +61,8 @@ const corsOptions = {
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   // The API authenticates with a Bearer token, so only these two are needed.
   allowedHeaders: ['Content-Type', 'Authorization'],
-  // No cookies are used for auth yet. Keep this false: combining credentials
-  // with a reflected origin would let any site make authenticated requests.
-  credentials: false,
+  // Allow credentials so the browser can send and receive httpOnly auth cookies
+  credentials: true,
   optionsSuccessStatus: 204,
   maxAge: 600, // cache preflight results for 10 minutes
 };

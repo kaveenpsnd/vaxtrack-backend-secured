@@ -28,6 +28,7 @@ const mockRes = () => {
   const res = {};
   res.status = jest.fn().mockReturnValue(res);
   res.json = jest.fn().mockReturnValue(res);
+  res.cookie = jest.fn().mockReturnValue(res);
   return res;
 };
 
@@ -59,7 +60,7 @@ describe("Auth Controller", () => {
       phone: "+94771234567",
     };
 
-    test("should register user and return token containing id and role", async () => {
+    test("should register user and set jwt cookie containing id and role", async () => {
       mockUserFindOne.mockResolvedValue(null); // no existing user
       mockUserCreate.mockResolvedValue(VALID_USER);
 
@@ -77,9 +78,20 @@ describe("Auth Controller", () => {
         email: VALID_USER.email,
         role: VALID_USER.role,
       });
+      expect(responseData.token).toBeUndefined();
 
-      // Decode the token and verify it contains both id and role
-      const decoded = jwt.verify(responseData.token, process.env.JWT_SECRET);
+      expect(res.cookie).toHaveBeenCalledWith(
+        "jwt",
+        expect.any(String),
+        expect.objectContaining({
+          httpOnly: true,
+          sameSite: "strict",
+          maxAge: 30 * 24 * 60 * 60 * 1000,
+        })
+      );
+
+      const cookieToken = res.cookie.mock.calls[0][1];
+      const decoded = jwt.verify(cookieToken, process.env.JWT_SECRET);
       expect(decoded.id).toBe(String(VALID_USER._id));
       expect(decoded.role).toBe(VALID_USER.role);
     });
@@ -114,7 +126,10 @@ describe("Auth Controller", () => {
       expect(res.status).toHaveBeenCalledWith(201);
       const responseData = res.json.mock.calls[0][0];
       expect(responseData.role).toBe("Public");
-      const decoded = jwt.verify(responseData.token, process.env.JWT_SECRET);
+      expect(responseData.token).toBeUndefined();
+
+      const cookieToken = res.cookie.mock.calls[0][1];
+      const decoded = jwt.verify(cookieToken, process.env.JWT_SECRET);
       expect(decoded.role).toBe("Public");
     });
 
@@ -135,7 +150,7 @@ describe("Auth Controller", () => {
   // POST /api/auth/login — authUser
   // ===================================================
   describe("authUser", () => {
-    test("should login user and return token containing id and role", async () => {
+    test("should login user and set jwt cookie containing id and role", async () => {
       mockMatchPassword.mockResolvedValue(true);
       mockUserFindOne.mockResolvedValue(VALID_USER);
 
@@ -153,9 +168,20 @@ describe("Auth Controller", () => {
         email: VALID_USER.email,
         role: VALID_USER.role,
       });
+      expect(responseData.token).toBeUndefined();
 
-      // Decode the token and verify it contains both id and role
-      const decoded = jwt.verify(responseData.token, process.env.JWT_SECRET);
+      expect(res.cookie).toHaveBeenCalledWith(
+        "jwt",
+        expect.any(String),
+        expect.objectContaining({
+          httpOnly: true,
+          sameSite: "strict",
+          maxAge: 30 * 24 * 60 * 60 * 1000,
+        })
+      );
+
+      const cookieToken = res.cookie.mock.calls[0][1];
+      const decoded = jwt.verify(cookieToken, process.env.JWT_SECRET);
       expect(decoded.id).toBe(String(VALID_USER._id));
       expect(decoded.role).toBe(VALID_USER.role);
     });

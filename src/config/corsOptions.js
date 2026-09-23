@@ -59,11 +59,10 @@ export const originChecker = (origin, callback) => {
 const corsOptions = {
   origin: originChecker,
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  // The API authenticates with a Bearer token, so only these two are needed.
+  // The API authenticates with a Bearer token or cookie, so only these two are needed.
   allowedHeaders: ['Content-Type', 'Authorization'],
-  // No cookies are used for auth yet. Keep this false: combining credentials
-  // with a reflected origin would let any site make authenticated requests.
-  credentials: false,
+  // Secure cookies are used for auth. Allowed origins are strictly validated via originChecker.
+  credentials: true,
   optionsSuccessStatus: 204,
   maxAge: 600, // cache preflight results for 10 minutes
 };

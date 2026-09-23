@@ -1,3 +1,4 @@
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
@@ -36,6 +37,7 @@ app.set("trust proxy", 1);
 
 // Middleware
 app.use(express.json());
+app.use(cookieParser());
 // Only the origins we ship a browser client on may read API responses.
 // A bare cors() would send Access-Control-Allow-Origin: * to every site.
 app.use(cors(corsOptions));

@@ -20,7 +20,7 @@ process.env.JWT_SECRET = "test_secret_for_auth";
 import jwt from "jsonwebtoken";
 
 // Import AFTER mocking
-const { registerUser, authUser } =
+const { registerUser, authUser, logoutUser } =
   await import("../src/controllers/authController.js");
 
 // ── Helpers ──
@@ -28,6 +28,7 @@ const mockRes = () => {
   const res = {};
   res.status = jest.fn().mockReturnValue(res);
   res.json = jest.fn().mockReturnValue(res);
+  res.cookie = jest.fn().mockReturnValue(res);
   return res;
 };
 
@@ -59,7 +60,7 @@ describe("Auth Controller", () => {
       phone: "+94771234567",
     };
 
-    test("should register user and return token containing id and role", async () => {
+    test("should register user, set jwt cookie, and not return token in body", async () => {
       mockUserFindOne.mockResolvedValue(null); // no existing user
       mockUserCreate.mockResolvedValue(VALID_USER);
 
@@ -77,9 +78,24 @@ describe("Auth Controller", () => {
         email: VALID_USER.email,
         role: VALID_USER.role,
       });
+      expect(responseData.token).toBeUndefined();
+
+      // Verify cookie was set
+      expect(res.cookie).toHaveBeenCalledWith(
+        "jwt",
+        expect.any(String),
+        expect.objectContaining({
+          httpOnly: true,
+          secure: true,
+          sameSite: "none",
+          maxAge: 30 * 24 * 60 * 60 * 1000,
+        })
+      );
 
       // Decode the token and verify it contains both id and role
-      const decoded = jwt.verify(responseData.token, process.env.JWT_SECRET);
+      const setCookieCall = res.cookie.mock.calls[0];
+      const token = setCookieCall[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
       expect(decoded.id).toBe(String(VALID_USER._id));
       expect(decoded.role).toBe(VALID_USER.role);
     });
@@ -114,7 +130,11 @@ describe("Auth Controller", () => {
       expect(res.status).toHaveBeenCalledWith(201);
       const responseData = res.json.mock.calls[0][0];
       expect(responseData.role).toBe("Public");
-      const decoded = jwt.verify(responseData.token, process.env.JWT_SECRET);
+      expect(responseData.token).toBeUndefined();
+
+      const setCookieCall = res.cookie.mock.calls[0];
+      const token = setCookieCall[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
       expect(decoded.role).toBe("Public");
     });
 
@@ -135,7 +155,7 @@ describe("Auth Controller", () => {
   // POST /api/auth/login — authUser
   // ===================================================
   describe("authUser", () => {
-    test("should login user and return token containing id and role", async () => {
+    test("should login user, set jwt cookie, and not return token in body", async () => {
       mockMatchPassword.mockResolvedValue(true);
       mockUserFindOne.mockResolvedValue(VALID_USER);
 
@@ -153,9 +173,24 @@ describe("Auth Controller", () => {
         email: VALID_USER.email,
         role: VALID_USER.role,
       });
+      expect(responseData.token).toBeUndefined();
+
+      // Verify cookie was set
+      expect(res.cookie).toHaveBeenCalledWith(
+        "jwt",
+        expect.any(String),
+        expect.objectContaining({
+          httpOnly: true,
+          secure: true,
+          sameSite: "none",
+          maxAge: 30 * 24 * 60 * 60 * 1000,
+        })
+      );
 
       // Decode the token and verify it contains both id and role
-      const decoded = jwt.verify(responseData.token, process.env.JWT_SECRET);
+      const setCookieCall = res.cookie.mock.calls[0];
+      const token = setCookieCall[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
       expect(decoded.id).toBe(String(VALID_USER._id));
       expect(decoded.role).toBe(VALID_USER.role);
     });
@@ -187,6 +222,34 @@ describe("Auth Controller", () => {
         "Invalid email or password",
       );
       expect(res.status).toHaveBeenCalledWith(401);
+    });
+  });
+
+  // ===================================================
+  // POST /api/auth/logout — logoutUser
+  // ===================================================
+  describe("logoutUser", () => {
+    test("should clear jwt cookie and return success message", () => {
+      const req = {};
+      const res = mockRes();
+
+      logoutUser(req, res);
+
+      expect(res.cookie).toHaveBeenCalledWith(
+        "jwt",
+        "",
+        expect.objectContaining({
+          httpOnly: true,
+          secure: true,
+          sameSite: "none",
+          expires: new Date(0),
+        })
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: "Logged out successfully",
+      });
     });
   });
 });

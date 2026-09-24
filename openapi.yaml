@@ -713,6 +713,108 @@ paths:
         '401':
           description: Invalid email or password
 
+  /auth/google/config:
+    get:
+      summary: Google sign-in settings for the frontend
+      description: >
+        Returns the public values the frontend needs to build Google's
+        authorization URL. The client secret is never returned.
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: Google sign-in settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clientId: { type: string, example: 1234-abc.apps.googleusercontent.com }
+                  redirectUri: { type: string, example: 'http://localhost:5173/auth/google/callback' }
+                  scope: { type: string, example: openid email profile }
+        '503':
+          description: Google sign-in is not configured on this server
+
+  /auth/google/callback:
+    post:
+      summary: Complete Sign in with Google (OpenID Connect)
+      description: >
+        Redeems the authorization code (with the PKCE code verifier) at Google,
+        verifies the ID token (signature, aud, iss, exp, nonce, email_verified),
+        then signs in, links or registers the patient account and sets the
+        httpOnly `jwt` session cookie. `role` is never read from the request;
+        Google sign-in only produces Public sessions. Rate limited to 10
+        attempts per IP per 15 minutes.
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, codeVerifier, nonce]
+              properties:
+                code:
+                  type: string
+                  description: Authorization code from Google's redirect
+                codeVerifier:
+                  type: string
+                  minLength: 43
+                  maxLength: 128
+                  description: PKCE code_verifier the frontend generated
+                nonce:
+                  type: string
+                  minLength: 16
+                  description: Nonce the frontend sent in the authorization request
+                nic:
+                  type: string
+                  description: Required only to create a new account
+                  example: '199012345678'
+                phone:
+                  type: string
+                  description: Required only to create a new account
+                  example: '0771234567'
+                address:
+                  type: string
+                  description: Optional, used only when creating a new account
+      responses:
+        '200':
+          description: Signed in (existing or newly linked patient account)
+          headers:
+            Set-Cookie:
+              description: httpOnly `jwt` session cookie
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _id: { type: string }
+                  name: { type: string }
+                  email: { type: string }
+                  role: { type: string, example: Public }
+                  profilePicture: { type: string, nullable: true }
+        '201':
+          description: New Public patient account created and signed in
+        '400':
+          description: Missing code, invalid codeVerifier, short nonce or invalid address
+        '401':
+          description: Google rejected the code or the ID token failed verification
+        '403':
+          description: The matching account is HospitalStaff or Admin; staff must sign in with their password
+        '404':
+          description: >
+            No account is linked to this Google account. The body contains
+            `needsRegistration: true` and the Google `profile`; collect NIC and
+            phone, then restart the Google flow.
+        '409':
+          description: Email linked to a different Google account, or NIC already registered
+        '429':
+          description: Too many Google sign-in attempts
+        '503':
+          description: Google sign-in is not configured on this server
+
   /users/profile:
     get:
       summary: Get user profile

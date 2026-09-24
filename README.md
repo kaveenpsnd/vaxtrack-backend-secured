@@ -75,20 +75,23 @@ Copy the example env file and fill in your values:
 cp .env.example .env
 ```
 
-| Variable             | Description                       |
-| -------------------- | --------------------------------- |
-| `PORT`               | Server port (default: `5000`)     |
-| `NODE_ENV`           | `development` or `production`     |
-| `MONGODB_URL`        | MongoDB connection string         |
-| `JWT_SECRET`         | Secret key for signing JWTs       |
-| `CORS_ORIGINS`       | Allowed browser origins (CSV)     |
-| `CLOUDINARY_URL`     | Cloudinary credentials URL        |
-| `LOCATIONIQ_API_KEY` | LocationIQ geocoding API key      |
-| `EMAIL_HOST`         | SMTP host (e.g. `smtp.gmail.com`) |
-| `EMAIL_PORT`         | SMTP port (e.g. `587`)            |
-| `EMAIL_USER`         | SMTP username                     |
-| `EMAIL_PASS`         | SMTP password / app key           |
-| `EMAIL_FROM`         | Default sender address            |
+| Variable               | Description                       |
+| ---------------------- | --------------------------------- |
+| `PORT`                 | Server port (default: `5000`)     |
+| `NODE_ENV`             | `development` or `production`     |
+| `MONGODB_URL`          | MongoDB connection string         |
+| `JWT_SECRET`           | Secret key for signing JWTs       |
+| `CORS_ORIGINS`         | Allowed browser origins (CSV)     |
+| `GOOGLE_CLIENT_ID`     | Google OAuth client ID            |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret        |
+| `GOOGLE_REDIRECT_URI`  | Frontend Google callback URL      |
+| `CLOUDINARY_URL`       | Cloudinary credentials URL        |
+| `LOCATIONIQ_API_KEY`   | LocationIQ geocoding API key      |
+| `EMAIL_HOST`           | SMTP host (e.g. `smtp.gmail.com`) |
+| `EMAIL_PORT`           | SMTP port (e.g. `587`)            |
+| `EMAIL_USER`           | SMTP username                     |
+| `EMAIL_PASS`           | SMTP password / app key           |
+| `EMAIL_FROM`           | Default sender address            |
 
 #### Allowed Browser Origins (`CORS_ORIGINS`)
 
@@ -101,6 +104,17 @@ CORS_ORIGINS=https://vaxtrackweb.netlify.app,http://localhost:5173
 If the variable is unset, the deployed frontend (`https://vaxtrackweb.netlify.app`) and the local Vite dev server (`http://localhost:5173`) are allowed. A request from any other origin gets no `Access-Control-Allow-Origin` header, so the browser blocks the response. Deploying the frontend to a new URL means adding that URL here, otherwise its requests fail in the browser.
 
 Note that CORS is enforced by browsers only. It does not restrict curl, Postman or server-to-server calls, and it is not a substitute for authentication, authorization or rate limiting.
+
+#### Sign in with Google (`GOOGLE_*`)
+
+"Sign in with Google" uses the OpenID Connect authorization code flow with PKCE. If the three `GOOGLE_*` variables are unset, the Google endpoints return `503` and password login keeps working.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), open **APIs & Services → OAuth consent screen** and configure it with the `openid`, `email` and `profile` scopes.
+2. Under **APIs & Services → Credentials**, create an **OAuth client ID** of type **Web application**.
+3. Add the frontend callback page(s) as **Authorized redirect URIs**, for example `http://localhost:5173/auth/google/callback` and `https://vaxtrackweb.netlify.app/auth/google/callback`.
+4. Put the client ID and secret in `.env`, and set `GOOGLE_REDIRECT_URI` to the callback URL for that environment. It must match the registered URI exactly.
+
+The client secret is only ever used on the server. Never put it in the frontend.
 
 ### Running the Server
 
@@ -275,6 +289,78 @@ GET /api/users/search?q=<query>
   "success": true,
   "count": 1,
   "data": [{ "_id": "...", "name": "Kavya Perera", "nic": "199012345678" }]
+}
+```
+
+---
+
+#### Sign in with Google — Config
+
+```
+GET /api/auth/google/config
+```
+
+**Access:** Public — the values the frontend needs to build Google's authorization URL. The client secret is never returned.
+
+**Response `200`:**
+
+```json
+{
+  "clientId": "1234-abc.apps.googleusercontent.com",
+  "redirectUri": "http://localhost:5173/auth/google/callback",
+  "scope": "openid email profile"
+}
+```
+
+**Errors:** `503 Google sign-in is not configured on this server`
+
+---
+
+#### Sign in with Google — Callback
+
+```
+POST /api/auth/google/callback
+```
+
+**Access:** Public — rate limited to 10 attempts per IP per 15 minutes
+
+The frontend generates `state`, `nonce` and a PKCE `code_verifier`, then redirects to Google with `response_type=code`, the scope above, and `code_challenge_method=S256`. After Google redirects back and the frontend has checked `state`, it posts:
+
+```json
+{
+  "code": "4/0AeanS0...",
+  "codeVerifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+  "nonce": "n-0S6_WzA2Mj-3q7",
+  "nic": "199012345678",
+  "phone": "0771234567",
+  "address": "123 Main Street, Colombo 03"
+}
+```
+
+`nic`, `phone` and `address` are only needed to create a new account. `role` is never read from the request.
+
+The backend redeems the code with the client secret and `codeVerifier`, then verifies the ID token: the signature against Google's keys, `aud`, `iss`, `exp`, the `nonce`, and `email_verified`. On success it sets the same httpOnly `jwt` session cookie as password login.
+
+| Status | When                                                                                                   |
+| ------ | ------------------------------------------------------------------------------------------------------ |
+| `200`  | Signed in: account already linked, or a patient account with the same email (linked on first use)     |
+| `201`  | New `Public` account created from the Google profile plus `nic` and `phone`                            |
+| `400`  | Missing `code`, invalid `codeVerifier` (43–128 chars), `nonce` under 16 chars, or invalid `address`    |
+| `401`  | Google rejected the code, or the ID token failed verification                                          |
+| `403`  | The matching account is `HospitalStaff` or `Admin`. Staff sign in with their password                  |
+| `404`  | No account yet: `{ "needsRegistration": true, "profile": { name, email } }`. Collect NIC and phone, then restart the flow |
+| `409`  | Email linked to a different Google account, or NIC already registered                                  |
+| `503`  | Google sign-in is not configured                                                                       |
+
+**Response `200` / `201`:**
+
+```json
+{
+  "_id": "64abc123def456",
+  "name": "Kavya Perera",
+  "email": "kavya@gmail.com",
+  "role": "Public",
+  "profilePicture": null
 }
 ```
 

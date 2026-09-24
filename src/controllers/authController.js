@@ -169,6 +169,31 @@ const updateUserProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
+    // 1. Identify sensitive fields: email, password, and phone
+    const isEmailChanging = req.body.email && req.body.email !== user.email;
+    const isPhoneChanging = req.body.phone && req.body.phone !== user.phone;
+    const isPasswordChanging = Boolean(req.body.password);
+
+    const isUpdatingSensitiveField = isEmailChanging || isPhoneChanging || isPasswordChanging;
+
+    // 2. If sensitive fields are changing, require and verify currentPassword
+    if (isUpdatingSensitiveField) {
+      if (!req.body.currentPassword) {
+        return res.status(401).json({
+          success: false,
+          message: "Current password is required to update sensitive information.",
+        });
+      }
+
+      const isMatch = await user.matchPassword(req.body.currentPassword);
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: "Incorrect current password.",
+        });
+      }
+    }
+
     user.name = req.body.name || user.name;
     user.email = req.body.email || user.email;
     user.phone = req.body.phone || user.phone;

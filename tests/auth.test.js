@@ -4,12 +4,14 @@ import { jest } from "@jest/globals";
 
 const mockUserFindOne = jest.fn();
 const mockUserCreate = jest.fn();
+const mockUserFindById = jest.fn();
 const mockMatchPassword = jest.fn();
 
 jest.unstable_mockModule("../src/models/User.js", () => ({
   default: {
     findOne: mockUserFindOne,
     create: mockUserCreate,
+    findById: mockUserFindById,
   },
 }));
 
@@ -20,7 +22,7 @@ process.env.JWT_SECRET = "test_secret_for_auth";
 import jwt from "jsonwebtoken";
 
 // Import AFTER mocking
-const { registerUser, authUser, logoutUser } =
+const { registerUser, authUser, logoutUser, updateUserProfile } =
   await import("../src/controllers/authController.js");
 
 // ── Helpers ──
@@ -250,6 +252,188 @@ describe("Auth Controller", () => {
         success: true,
         message: "Logged out successfully",
       });
+    });
+  });
+
+  // ===================================================
+  // PUT /api/users/profile — updateUserProfile
+  // ===================================================
+  describe("updateUserProfile (OWASP A07 Re-Authentication)", () => {
+    const existingUserDoc = {
+      _id: VALID_USER._id,
+      name: "Existing Name",
+      email: "existing@example.com",
+      phone: "+94771234567",
+      nic: "123456789V",
+      address: "123 Old St",
+      role: "Public",
+      matchPassword: jest.fn(),
+      save: jest.fn(),
+    };
+
+    test("should allow updating non-sensitive fields without currentPassword", async () => {
+      const mockDoc = {
+        ...existingUserDoc,
+        save: jest.fn().mockImplementation(async function () {
+          return this;
+        }),
+      };
+      mockUserFindById.mockResolvedValue(mockDoc);
+
+      const req = {
+        user: { _id: VALID_USER._id },
+        body: {
+          name: "New Name",
+          address: "456 New St",
+          nic: "987654321V",
+        },
+      };
+      const res = mockRes();
+
+      await updateUserProfile(req, res);
+
+      expect(mockDoc.name).toBe("New Name");
+      expect(mockDoc.address).toBe("456 New St");
+      expect(mockDoc.nic).toBe("987654321V");
+      expect(mockDoc.matchPassword).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          _id: VALID_USER._id,
+          name: "New Name",
+          address: "456 New St",
+          nic: "987654321V",
+        })
+      );
+    });
+
+    test("should require currentPassword when updating email", async () => {
+      const mockDoc = { ...existingUserDoc };
+      mockUserFindById.mockResolvedValue(mockDoc);
+
+      const req = {
+        user: { _id: VALID_USER._id },
+        body: {
+          email: "newemail@example.com",
+        },
+      };
+      const res = mockRes();
+
+      await updateUserProfile(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Current password is required to update sensitive information.",
+      });
+      expect(mockDoc.save).not.toHaveBeenCalled();
+    });
+
+    test("should require currentPassword when updating password", async () => {
+      const mockDoc = { ...existingUserDoc };
+      mockUserFindById.mockResolvedValue(mockDoc);
+
+      const req = {
+        user: { _id: VALID_USER._id },
+        body: {
+          password: "newpassword123",
+        },
+      };
+      const res = mockRes();
+
+      await updateUserProfile(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Current password is required to update sensitive information.",
+      });
+      expect(mockDoc.save).not.toHaveBeenCalled();
+    });
+
+    test("should require currentPassword when updating phone", async () => {
+      const mockDoc = { ...existingUserDoc };
+      mockUserFindById.mockResolvedValue(mockDoc);
+
+      const req = {
+        user: { _id: VALID_USER._id },
+        body: {
+          phone: "+94779999999",
+        },
+      };
+      const res = mockRes();
+
+      await updateUserProfile(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Current password is required to update sensitive information.",
+      });
+      expect(mockDoc.save).not.toHaveBeenCalled();
+    });
+
+    test("should reject update if currentPassword does not match", async () => {
+      const mockDoc = {
+        ...existingUserDoc,
+        matchPassword: jest.fn().mockResolvedValue(false),
+      };
+      mockUserFindById.mockResolvedValue(mockDoc);
+
+      const req = {
+        user: { _id: VALID_USER._id },
+        body: {
+          email: "newemail@example.com",
+          currentPassword: "wrongPassword",
+        },
+      };
+      const res = mockRes();
+
+      await updateUserProfile(req, res);
+
+      expect(mockDoc.matchPassword).toHaveBeenCalledWith("wrongPassword");
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Incorrect current password.",
+      });
+      expect(mockDoc.save).not.toHaveBeenCalled();
+    });
+
+    test("should successfully update sensitive fields when valid currentPassword is provided", async () => {
+      const mockDoc = {
+        ...existingUserDoc,
+        matchPassword: jest.fn().mockResolvedValue(true),
+        save: jest.fn().mockImplementation(async function () {
+          return this;
+        }),
+      };
+      mockUserFindById.mockResolvedValue(mockDoc);
+
+      const req = {
+        user: { _id: VALID_USER._id },
+        body: {
+          email: "newemail@example.com",
+          phone: "+94779999999",
+          password: "newPassword123",
+          currentPassword: "correctPassword",
+        },
+      };
+      const res = mockRes();
+
+      await updateUserProfile(req, res);
+
+      expect(mockDoc.matchPassword).toHaveBeenCalledWith("correctPassword");
+      expect(mockDoc.email).toBe("newemail@example.com");
+      expect(mockDoc.phone).toBe("+94779999999");
+      expect(mockDoc.password).toBe("newPassword123");
+      expect(mockDoc.save).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          _id: VALID_USER._id,
+          email: "newemail@example.com",
+          phone: "+94779999999",
+        })
+      );
     });
   });
 });

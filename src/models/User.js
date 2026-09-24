@@ -12,9 +12,20 @@ const userSchema = mongoose.Schema(
       required: true,
       unique: true,
     },
+    // Required for password accounts. Accounts created through "Sign in with
+    // Google" have no password until the user sets one.
     password: {
       type: String,
-      required: true,
+      required: function () {
+        return !this.googleId;
+      },
+    },
+    // Google's stable account ID (the ID token's `sub` claim). Set when the
+    // account signs in with Google. Sparse so password-only accounts are fine.
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
     },
     role: {
       type: String,
@@ -72,6 +83,11 @@ userSchema.pre("save", async function () {
 
 // 2. Helper to check password during Login
 userSchema.methods.matchPassword = async function (enteredPassword) {
+  // Google-only accounts have no password hash, and bcrypt throws on a
+  // missing hash or non-string input. Treat both as a failed match.
+  if (!this.password || typeof enteredPassword !== "string") {
+    return false;
+  }
   return await bcrypt.compare(enteredPassword, this.password);
 };
 

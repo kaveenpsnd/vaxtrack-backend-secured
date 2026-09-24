@@ -244,5 +244,14 @@ const updateUserProfile = async (req, res) => {
   }
 };
 
-export { authUser, registerUser, searchUsers, updateUserProfile, logoutUser };
+export {
+  authUser,
+  registerUser,
+  searchUsers,
+  updateUserProfile,
+  logoutUser,
+  // Shared with oauthController so Google sign-in issues the same session
+  generateToken,
+  setTokenCookie,
+};
 

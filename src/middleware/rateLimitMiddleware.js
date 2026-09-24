@@ -13,6 +13,19 @@ export const loginLimiter = rateLimit({
   },
 });
 
+// Limiter for Google sign-in: 10 attempts per IP per 15-minute window.
+// Separate from loginLimiter so the two flows don't share one counter.
+export const oauthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many Google sign-in attempts from this IP. Please try again after 15 minutes.',
+  },
+});
+
 // Lenient limiter for registration: 20 accounts per IP per hour.
 // Mitigates mass account creation on POST /api/users.
 export const registerLimiter = rateLimit({

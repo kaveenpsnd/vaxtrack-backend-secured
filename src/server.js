@@ -23,6 +23,7 @@ import recordRoutes from "./routes/recordRoutes.js";
 import sideEffectRoutes from "./routes/sideEffectRoutes.js";
 import vaccineRoutes from "./routes/vaccineRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import oauthRoutes from "./routes/oauthRoutes.js";
 
 // Load OpenAPI spec
 const swaggerDocument = YAML.load(path.resolve("openapi.yaml"));
@@ -56,6 +57,7 @@ startCronJobs();
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.use("/api/users", authRoutes);
+app.use("/api/auth", oauthRoutes); // Sign in with Google (OpenID Connect)
 
 // Health check
 app.get("/", (req, res) => {

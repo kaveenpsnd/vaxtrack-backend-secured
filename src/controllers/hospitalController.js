@@ -1,5 +1,6 @@
 import Hospital from '../models/Hospital.js';
 import { geocodeAddress } from '../services/geocodingService.js';
+import { escapeRegex } from '../helpers/regexHelper.js';
 
 // ──────────────────────────────────────────────
 // @desc    Create a new hospital
@@ -127,8 +128,8 @@ const getAllHospitals = async (req, res) => {
 
         // Build dynamic filter object
         const filter = {};
-        if (city) filter.city = { $regex: city, $options: 'i' };
-        if (district) filter.district = { $regex: district, $options: 'i' };
+        if (city) filter.city = { $regex: escapeRegex(city), $options: 'i' };
+        if (district) filter.district = { $regex: escapeRegex(district), $options: 'i' };
 
         const hospitals = await Hospital.find(filter)
             // TODO: Add .populate('createdBy', 'name email') once User model is ready

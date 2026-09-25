@@ -4,6 +4,7 @@ import SideEffect from '../models/SideEffect.js';
 import Hospital from '../models/Hospital.js';
 import Vaccine from '../models/Vaccine.js';
 import mongoose from 'mongoose';
+import { escapeRegex } from '../helpers/regexHelper.js';
 
 // @desc    Create a new vaccination record (Mark as Vaccinated)
 // @route   POST /api/records
@@ -359,10 +360,11 @@ const getAllRecords = async (req, res) => {
       if (mongoose.isValidObjectId(req.query.patientId)) {
         filter.patientId = req.query.patientId;
       } else {
+        const sanitizedPatient = escapeRegex(req.query.patientId);
         const users = await User.find({
           $or: [
-            { nic: { $regex: req.query.patientId, $options: 'i' } },
-            { name: { $regex: req.query.patientId, $options: 'i' } }
+            { nic: { $regex: sanitizedPatient, $options: 'i' } },
+            { name: { $regex: sanitizedPatient, $options: 'i' } }
           ]
         });
         filter.patientId = { $in: users.map(u => u._id) };
@@ -373,7 +375,8 @@ const getAllRecords = async (req, res) => {
       if (mongoose.isValidObjectId(req.query.hospitalId)) {
         filter.hospitalId = req.query.hospitalId;
       } else {
-        const hospitals = await Hospital.find({ name: { $regex: req.query.hospitalId, $options: 'i' } });
+        const sanitizedHospital = escapeRegex(req.query.hospitalId);
+        const hospitals = await Hospital.find({ name: { $regex: sanitizedHospital, $options: 'i' } });
         filter.hospitalId = { $in: hospitals.map(h => h._id) };
       }
     }
@@ -382,7 +385,8 @@ const getAllRecords = async (req, res) => {
       if (mongoose.isValidObjectId(req.query.vaccineId)) {
         filter.vaccineId = req.query.vaccineId;
       } else {
-        const vaccines = await Vaccine.find({ name: { $regex: req.query.vaccineId, $options: 'i' } });
+        const sanitizedVaccine = escapeRegex(req.query.vaccineId);
+        const vaccines = await Vaccine.find({ name: { $regex: sanitizedVaccine, $options: 'i' } });
         filter.vaccineId = { $in: vaccines.map(v => v._id) };
       }
     }

@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import mongoose from "mongoose";
 import { deleteImage, uploadImage } from "../services/cloudinaryService.js";
+import { escapeRegex } from "../helpers/regexHelper.js";
 
 // Helper Function: Generate JWT Token
 const generateToken = (id, role) => {
@@ -102,11 +103,12 @@ const searchUsers = async (req, res) => {
 
     // If no ObjectId match, search by NIC or name
     if (users.length === 0) {
+      const sanitizedQuery = escapeRegex(query);
       users = await User.find({
         role: 'Public',
         $or: [
-          { nic: { $regex: `^${query}`, $options: 'i' } },
-          { name: { $regex: query, $options: 'i' } },
+          { nic: { $regex: `^${sanitizedQuery}`, $options: 'i' } },
+          { name: { $regex: sanitizedQuery, $options: 'i' } },
         ],
       })
         .select('name email nic role phone')

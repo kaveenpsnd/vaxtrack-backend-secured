@@ -1077,6 +1077,28 @@ PERF_TARGET=https://vaxtrack-backend.onrender.com npm run test:perf:cloud
 
 Artillery prints: request rate, response time percentiles (p50, p95, p99), HTTP status distribution, and error counts.
 
+### Dependency Security (npm audit)
+
+Known advisories in dependencies are checked with `npm audit`, which uses the GitHub Advisory Database:
+
+```bash
+# What ships with the API — this must stay clean
+npm audit --omit=dev
+
+# Everything, including dev tooling (Jest, Artillery, nodemon)
+npm audit
+```
+
+The **Dependency Audit** GitHub Actions workflow (`.github/workflows/dependency-audit.yml`) runs on every pull request into `dev` or `main`, and weekly. It fails if a production dependency has a high or critical advisory. The full-tree report is informational only.
+
+When updating dependencies:
+
+- Prefer `npm audit fix` (stays within semver ranges). Treat `npm audit fix --force` as a manual, reviewed upgrade, because it can apply breaking major versions or, as happened with Artillery, suggest a downgrade.
+- After a fix, raise the version floor in `package.json` so a regenerated lockfile can't fall back to a vulnerable release.
+- Run `npm test`. `tests/emailService.test.js` exercises the real `nodemailer` over SMTP, so mail regressions show up there.
+
+**Accepted finding:** `csv-parse` 4.16.3 (moderate, [GHSA-8cw4-87c7-c6xx](https://github.com/advisories/GHSA-8cw4-87c7-c6xx), fixed in 7.0.2). It is a dev-only dependency of Artillery, which requires the v4 API, so it cannot be upgraded without breaking Artillery's CSV payload support. The flaw needs attacker-controlled CSV parsed with the `columns` and duplicate-column grouping options. Artillery only parses `config.payload` files from the tester's own disk, doesn't set those options by default, and `artillery.yml` defines no payloads. Revisit when Artillery moves to `csv-parse` 7.
+
 ---
 
 ## Deployment

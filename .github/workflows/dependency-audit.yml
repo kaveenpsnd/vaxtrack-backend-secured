@@ -1,0 +1,38 @@
+name: Dependency Audit
+
+# Fails when a production dependency has a known high or critical advisory
+# (OWASP A06: Vulnerable and Outdated Components). Runs on every PR, and
+# weekly, because new advisories are published against versions we already use.
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  schedule:
+    - cron: '0 3 * * 1' # Mondays 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # npm audit reads package-lock.json, so no install is needed
+      - name: Fail on high/critical advisories in production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Report all advisories, including dev tooling (informational)
+        run: npm audit
+        continue-on-error: true

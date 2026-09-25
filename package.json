@@ -38,7 +38,7 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.2.0",
-    "artillery": "^2.0.30",
+    "artillery": "^2.0.34",
     "jest": "^30.2.0",
     "nodemon": "^3.1.11"
   },

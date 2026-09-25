@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import mongoose from "mongoose";
 import { deleteImage, uploadImage } from "../services/cloudinaryService.js";
 import { escapeRegex } from "../helpers/regexHelper.js";
+import { isValidImageBuffer } from "../helpers/fileHelper.js";
 
 // Helper Function: Generate JWT Token
 const generateToken = (id, role) => {
@@ -152,6 +153,12 @@ const updateUserProfile = async (req, res) => {
 
     // Handle profile picture upload to Cloudinary (vaxtrack/profiles folder)
     if (req.file) {
+      if (!isValidImageBuffer(req.file.buffer)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid file content. Only genuine JPEG, PNG, and WebP images are allowed.",
+        });
+      }
       // Delete the old profile picture from Cloudinary if it exists
       if (user.profilePicture) {
         await deleteImage(user.profilePicture);

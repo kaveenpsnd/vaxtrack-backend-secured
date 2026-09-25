@@ -1,7 +1,7 @@
 import express from 'express';
 import { registerUser, authUser, searchUsers, updateUserProfile } from '../controllers/authController.js';
 import { protect, staffOnly } from '../middleware/authMiddleware.js';
-import upload from '../middleware/uploadMiddleware.js';
+import upload, { validateImageFile } from '../middleware/uploadMiddleware.js';
 import { loginLimiter, registerLimiter } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
@@ -22,7 +22,7 @@ router.get('/profile', protect, (req, res) => {
 
 // Route 4: Update My Profile (Protected)
 // PUT /api/users/profile
-router.put('/profile', protect, upload.single('profilePicture'), updateUserProfile);
+router.put('/profile', protect, upload.single('profilePicture'), validateImageFile, updateUserProfile);
 
 // Route 5: Search patients by NIC / name / ID (Staff/Admin only)
 // GET /api/users/search?q=<query>

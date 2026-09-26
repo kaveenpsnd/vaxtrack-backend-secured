@@ -29,14 +29,38 @@ export const parseOrigins = (value) => {
 };
 
 /**
+ * Normalises a URL to its origin (scheme://host:port), e.g. so that
+ * "http://localhost:5173/" matches the browser's Origin header.
+ *
+ * @param {string|undefined} value - A URL
+ * @returns {string|null} The origin, or null if value is not a valid http(s) URL
+ */
+export const toOrigin = (value) => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
  * The origins allowed to call this API from a browser.
  * Read lazily (not at import time) so dotenv.config() has already run.
+ * FRONTEND_URL (the SSO redirect target) is always added to the list.
  *
  * @returns {string[]} Allowed origins
  */
 export const getAllowedOrigins = () => {
   const configured = parseOrigins(process.env.CORS_ORIGINS);
-  return configured.length > 0 ? configured : DEFAULT_ALLOWED_ORIGINS;
+  const origins = configured.length > 0 ? configured : [...DEFAULT_ALLOWED_ORIGINS];
+
+  const frontendOrigin = toOrigin(process.env.FRONTEND_URL);
+  if (frontendOrigin && !origins.includes(frontendOrigin)) {
+    origins.push(frontendOrigin);
+  }
+  return origins;
 };
 
 /**

@@ -1,6 +1,12 @@
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 
+// Local (email + password) accounts must supply these fields at registration.
+// Accounts created through WSO2 single sign-on do not have them.
+const isLocalAccount = function () {
+  return this.authProvider === "local";
+};
+
 const userSchema = mongoose.Schema(
   {
     name: {
@@ -14,7 +20,7 @@ const userSchema = mongoose.Schema(
     },
     password: {
       type: String,
-      required: true,
+      required: isLocalAccount,
     },
     role: {
       type: String,
@@ -23,12 +29,11 @@ const userSchema = mongoose.Schema(
     },
     nic: {
       type: String,
-      required: true,
-      unique: true,
+      required: isLocalAccount,
     },
     phone: {
       type: String,
-      required: true,
+      required: isLocalAccount,
     },
     address: {
       type: String,
@@ -37,6 +42,19 @@ const userSchema = mongoose.Schema(
     profilePicture: {
       type: String,
       required: false,
+    },
+
+    // SINGLE SIGN-ON (WSO2 Identity Server):
+    authProvider: {
+      type: String,
+      enum: ["local", "wso2"],
+      default: "local",
+    },
+    // The ID token's `sub` claim — the stable WSO2 identifier for this user.
+    wso2Sub: {
+      type: String,
+      unique: true,
+      sparse: true,
     },
 
     // FAMILY ARCHITECTURE:
@@ -55,12 +73,20 @@ const userSchema = mongoose.Schema(
   },
 );
 
+// NIC stays unique, but only among accounts that have one. A plain unique index
+// would treat every SSO account without a NIC as a duplicate `null`.
+// Existing databases need scripts/migrate-nic-index.js to replace the old index.
+userSchema.index(
+  { nic: 1 },
+  { unique: true, partialFilterExpression: { nic: { $type: "string" } } },
+);
+
 // --- SECURITY LOGIC ---
 
 // 1. Encrypt password before saving
 userSchema.pre("save", async function () {
-  // If the password field hasn't changed, skip this step
-  if (!this.isModified("password")) {
+  // If the password field hasn't changed (or SSO accounts have none), skip this step
+  if (!this.isModified("password") || !this.password) {
     return;
   }
 
@@ -72,6 +98,10 @@ userSchema.pre("save", async function () {
 
 // 2. Helper to check password during Login
 userSchema.methods.matchPassword = async function (enteredPassword) {
+  // SSO-only accounts have no password hash; bcrypt.compare would throw.
+  if (!this.password || typeof enteredPassword !== "string") {
+    return false;
+  }
   return await bcrypt.compare(enteredPassword, this.password);
 };
 

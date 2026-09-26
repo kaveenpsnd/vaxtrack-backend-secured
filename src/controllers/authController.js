@@ -22,6 +22,16 @@ const setTokenCookie = (res, token) => {
   });
 };
 
+// Helper Function: Clear JWT Token Cookie (options must match setTokenCookie)
+const clearTokenCookie = (res) => {
+  res.cookie("jwt", "", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+    expires: new Date(0),
+  });
+};
+
 // @desc    Register a new user
 // @route   POST /api/users
 // @access  Public
@@ -76,8 +86,12 @@ const authUser = async (req, res) => {
   // 1. Find user by email
   const user = await User.findOne({ email });
 
-  // 2. Check if user exists AND password matches
-  if (user && (await user.matchPassword(password))) {
+  // 2. SSO-only accounts (created via WSO2, no password) cannot use password
+  //    login. Same generic message, so the response does not reveal the account type.
+  const isSsoOnly = user && user.authProvider === "wso2" && !user.password;
+
+  // 3. Check if user exists AND password matches
+  if (user && !isSsoOnly && (await user.matchPassword(password))) {
     const token = generateToken(user._id, user.role);
     setTokenCookie(res, token);
 
@@ -98,12 +112,7 @@ const authUser = async (req, res) => {
 // @route   POST /api/users/logout
 // @access  Public
 const logoutUser = (req, res) => {
-  res.cookie("jwt", "", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    expires: new Date(0),
-  });
+  clearTokenCookie(res);
   res.status(200).json({ success: true, message: "Logged out successfully" });
 };
 
@@ -244,5 +253,14 @@ const updateUserProfile = async (req, res) => {
   }
 };
 
-export { authUser, registerUser, searchUsers, updateUserProfile, logoutUser };
+export {
+  authUser,
+  registerUser,
+  searchUsers,
+  updateUserProfile,
+  logoutUser,
+  generateToken,
+  setTokenCookie,
+  clearTokenCookie,
+};
 

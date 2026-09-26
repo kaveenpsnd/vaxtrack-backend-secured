@@ -13,6 +13,7 @@ import corsOptions from "./config/corsOptions.js";
 import { startCronJobs } from "./services/cronService.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import wso2AuthRoutes from "./routes/wso2AuthRoutes.js";
 import batchRoutes from "./routes/batchRoutes.js";
 import clinicRoutes from "./routes/clinicRoutes.js";
 import dependentRoutes from "./routes/dependentRoutes.js";
@@ -37,7 +38,9 @@ app.set("trust proxy", 1);
 
 // Middleware
 app.use(express.json());
-app.use(cookieParser());
+// The secret lets us sign the short-lived WSO2 SSO transaction cookie.
+// Unsigned cookies (e.g. the existing `jwt` cookie) are parsed exactly as before.
+app.use(cookieParser(process.env.COOKIE_SECRET));
 // Only the origins we ship a browser client on may read API responses.
 // A bare cors() would send Access-Control-Allow-Origin: * to every site.
 app.use(cors(corsOptions));
@@ -56,6 +59,7 @@ startCronJobs();
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.use("/api/users", authRoutes);
+app.use("/api/auth/wso2", wso2AuthRoutes);
 
 // Health check
 app.get("/", (req, res) => {

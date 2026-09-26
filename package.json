@@ -27,6 +27,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.1.0",
+    "jose": "^6.2.12",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.10.2",
     "morgan": "^1.12.1",
@@ -40,7 +41,8 @@
     "@jest/globals": "^30.2.0",
     "artillery": "^2.0.34",
     "jest": "^30.2.0",
-    "nodemon": "^3.1.11"
+    "nodemon": "^3.1.11",
+    "supertest": "^7.3.0"
   },
   "overrides": {
     "glob": "^13.0.5",

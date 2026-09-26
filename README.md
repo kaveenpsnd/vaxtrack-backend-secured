@@ -81,6 +81,7 @@ cp .env.example .env
 | `NODE_ENV`           | `development` or `production`     |
 | `MONGODB_URL`        | MongoDB connection string         |
 | `JWT_SECRET`         | Secret key for signing JWTs       |
+| `CORS_ORIGINS`       | Allowed browser origins (CSV)     |
 | `CLOUDINARY_URL`     | Cloudinary credentials URL        |
 | `LOCATIONIQ_API_KEY` | LocationIQ geocoding API key      |
 | `EMAIL_HOST`         | SMTP host (e.g. `smtp.gmail.com`) |
@@ -88,6 +89,18 @@ cp .env.example .env
 | `EMAIL_USER`         | SMTP username                     |
 | `EMAIL_PASS`         | SMTP password / app key           |
 | `EMAIL_FROM`         | Default sender address            |
+
+#### Allowed Browser Origins (`CORS_ORIGINS`)
+
+Only the origins listed here may call the API from a browser. Give a comma-separated list with no trailing slash:
+
+```bash
+CORS_ORIGINS=https://vaxtrackweb.netlify.app,http://localhost:5173
+```
+
+If the variable is unset, the deployed frontend (`https://vaxtrackweb.netlify.app`) and the local Vite dev server (`http://localhost:5173`) are allowed. A request from any other origin gets no `Access-Control-Allow-Origin` header, so the browser blocks the response. Deploying the frontend to a new URL means adding that URL here, otherwise its requests fail in the browser.
+
+Note that CORS is enforced by browsers only. It does not restrict curl, Postman or server-to-server calls, and it is not a substitute for authentication, authorization or rate limiting.
 
 ### Running the Server
 
@@ -1063,6 +1076,28 @@ PERF_TARGET=https://vaxtrack-backend.onrender.com npm run test:perf:cloud
 ```
 
 Artillery prints: request rate, response time percentiles (p50, p95, p99), HTTP status distribution, and error counts.
+
+### Dependency Security (npm audit)
+
+Known advisories in dependencies are checked with `npm audit`, which uses the GitHub Advisory Database:
+
+```bash
+# What ships with the API — this must stay clean
+npm audit --omit=dev
+
+# Everything, including dev tooling (Jest, Artillery, nodemon)
+npm audit
+```
+
+The **Dependency Audit** GitHub Actions workflow (`.github/workflows/dependency-audit.yml`) runs on every pull request into `dev` or `main`, and weekly. It fails if a production dependency has a high or critical advisory. The full-tree report is informational only.
+
+When updating dependencies:
+
+- Prefer `npm audit fix` (stays within semver ranges). Treat `npm audit fix --force` as a manual, reviewed upgrade, because it can apply breaking major versions or, as happened with Artillery, suggest a downgrade.
+- After a fix, raise the version floor in `package.json` so a regenerated lockfile can't fall back to a vulnerable release.
+- Run `npm test`. `tests/emailService.test.js` exercises the real `nodemailer` over SMTP, so mail regressions show up there.
+
+**Accepted finding:** `csv-parse` 4.16.3 (moderate, [GHSA-8cw4-87c7-c6xx](https://github.com/advisories/GHSA-8cw4-87c7-c6xx), fixed in 7.0.2). It is a dev-only dependency of Artillery, which requires the v4 API, so it cannot be upgraded without breaking Artillery's CSV payload support. The flaw needs attacker-controlled CSV parsed with the `columns` and duplicate-column grouping options. Artillery only parses `config.payload` files from the tester's own disk, doesn't set those options by default, and `artillery.yml` defines no payloads. Revisit when Artillery moves to `csv-parse` 7.
 
 ---
 

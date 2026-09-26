@@ -7,7 +7,7 @@ import {
     updateVaccine,
 } from "../controllers/vaccineController.js";
 import { adminOnly, protect } from "../middleware/authMiddleware.js";
-import upload from "../middleware/uploadMiddleware.js";
+import upload, { validateImageFile } from "../middleware/uploadMiddleware.js";
 
 const router = express.Router();
 
@@ -19,11 +19,11 @@ router.get("/:id", getVaccineById);
 
 // POST /api/vaccines -> Create a new vaccine (with optional image upload)
 // Access: Admin only
-router.post("/", protect, adminOnly, upload.single("image"), createVaccine);
+router.post("/", protect, adminOnly, upload.single("image"), validateImageFile, createVaccine);
 
 // PATCH /api/vaccines/:id -> Update a vaccine (with optional image upload)
 // Access: Admin only
-router.patch("/:id", protect, adminOnly, upload.single("image"), updateVaccine);
+router.patch("/:id", protect, adminOnly, upload.single("image"), validateImageFile, updateVaccine);
 
 // DELETE /api/vaccines/:id -> Delete a vaccine
 // Access: Admin only

@@ -4,20 +4,23 @@ import User from '../models/User.js';
 const protect = async (req, res, next) => {
   let token;
 
-  // Check if the "Authorization" header exists and starts with "Bearer"
-  // Format: "Bearer <token12345>"
-  if (
+  // 1. Check if token is in httpOnly cookie first
+  if (req.cookies && req.cookies.jwt) {
+    token = req.cookies.jwt;
+  } else if (
+    // Fallback: Check if the "Authorization" header exists and starts with "Bearer"
     req.headers.authorization &&
     req.headers.authorization.startsWith('Bearer')
   ) {
-    try {
-      // Get the token from the header (remove the "Bearer " part)
-      token = req.headers.authorization.split(' ')[1];
+    token = req.headers.authorization.split(' ')[1];
+  }
 
-      // 1. Verify token
+  if (token) {
+    try {
+      // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      // 2. Get user from the token (exclude password)
+      // Get user from the token (exclude password)
       // This attaches the user object to the request object
       // so we can access it in our routes as req.user
       req.user = await User.findById(decoded.id).select('-password');
@@ -32,11 +35,12 @@ const protect = async (req, res, next) => {
     } catch (error) {
       console.error(error);
       res.status(401);
+      if (error.message === 'Not authorized, user not found') {
+        throw error;
+      }
       throw new Error('Not authorized, token failed');
     }
-  }
-
-  if (!token) {
+  } else {
     res.status(401);
     throw new Error('Not authorized, no token');
   }

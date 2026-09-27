@@ -25,3 +25,19 @@ export const registerLimiter = rateLimit({
     message: 'Too many accounts created from this IP. Please try again after an hour.',
   },
 });
+
+// Limiter for the WSO2 SSO redirects (GET /api/auth/wso2/login and /callback).
+// Password guessing does not happen here (WSO2 checks the password), and one
+// sign-in makes two requests, so the strict loginLimiter would lock users out
+// after a couple of logins. Skipped outside production to keep local dev smooth.
+export const ssoLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV !== 'production',
+  message: {
+    success: false,
+    message: 'Too many sign-in attempts from this IP. Please try again after 15 minutes.',
+  },
+});

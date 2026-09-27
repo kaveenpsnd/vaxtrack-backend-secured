@@ -75,20 +75,26 @@ Copy the example env file and fill in your values:
 cp .env.example .env
 ```
 
-| Variable             | Description                       |
-| -------------------- | --------------------------------- |
-| `PORT`               | Server port (default: `5000`)     |
-| `NODE_ENV`           | `development` or `production`     |
-| `MONGODB_URL`        | MongoDB connection string         |
-| `JWT_SECRET`         | Secret key for signing JWTs       |
-| `CORS_ORIGINS`       | Allowed browser origins (CSV)     |
-| `CLOUDINARY_URL`     | Cloudinary credentials URL        |
-| `LOCATIONIQ_API_KEY` | LocationIQ geocoding API key      |
-| `EMAIL_HOST`         | SMTP host (e.g. `smtp.gmail.com`) |
-| `EMAIL_PORT`         | SMTP port (e.g. `587`)            |
-| `EMAIL_USER`         | SMTP username                     |
-| `EMAIL_PASS`         | SMTP password / app key           |
-| `EMAIL_FROM`         | Default sender address            |
+| Variable             | Description                                          |
+| -------------------- | ---------------------------------------------------- |
+| `PORT`               | Server port (default: `5000`)                        |
+| `NODE_ENV`           | `development` or `production`                        |
+| `MONGODB_URL`        | MongoDB connection string                            |
+| `JWT_SECRET`         | Secret key for signing JWTs                          |
+| `CORS_ORIGINS`       | Allowed browser origins (CSV)                        |
+| `CLOUDINARY_URL`     | Cloudinary credentials URL                           |
+| `LOCATIONIQ_API_KEY` | LocationIQ geocoding API key                         |
+| `EMAIL_HOST`         | SMTP host (e.g. `smtp.gmail.com`)                    |
+| `EMAIL_PORT`         | SMTP port (e.g. `587`)                               |
+| `EMAIL_USER`         | SMTP username                                        |
+| `EMAIL_PASS`         | SMTP password / app key                              |
+| `EMAIL_FROM`         | Default sender address                               |
+| `WSO2_BASE`          | WSO2 Identity Server root URL (single sign-on)       |
+| `WSO2_CLIENT_ID`     | Client ID of the VaxTrack app in WSO2                |
+| `WSO2_CLIENT_SECRET` | Client secret of the VaxTrack app in WSO2            |
+| `WSO2_REDIRECT_URI`  | Callback URL registered in WSO2                      |
+| `FRONTEND_URL`       | Frontend origin the browser returns to after sign-in |
+| `COOKIE_SECRET`      | Secret for signing the short-lived SSO login cookie  |
 
 #### Allowed Browser Origins (`CORS_ORIGINS`)
 
@@ -101,6 +107,28 @@ CORS_ORIGINS=https://vaxtrackweb.netlify.app,http://localhost:5173
 If the variable is unset, the deployed frontend (`https://vaxtrackweb.netlify.app`) and the local Vite dev server (`http://localhost:5173`) are allowed. A request from any other origin gets no `Access-Control-Allow-Origin` header, so the browser blocks the response. Deploying the frontend to a new URL means adding that URL here, otherwise its requests fail in the browser.
 
 Note that CORS is enforced by browsers only. It does not restrict curl, Postman or server-to-server calls, and it is not a substitute for authentication, authorization or rate limiting.
+
+#### Single Sign-On (WSO2 Identity Server)
+
+Users can also sign in through WSO2 Identity Server, using OpenID Connect (Authorization Code flow with PKCE). The backend is the OAuth client: it keeps the client secret, talks to WSO2 server-to-server, and then issues the normal VaxTrack session cookie. The browser never sees the client secret or WSO2's tokens.
+
+To set it up:
+
+1. In the WSO2 Console, register VaxTrack as a **Traditional Web Application** using OpenID Connect (a confidential client with a client secret).
+2. Allow the **Authorization Code** grant only, since it is the only one VaxTrack uses. Set the callback URL to the backend's `/api/auth/wso2/callback`, and make PKCE mandatory (S256).
+3. Allow the `openid`, `profile` and `email` scopes, and make sure the user's `email` is released in the ID token or userinfo.
+4. Put the app's values in `.env` (never commit the secrets):
+
+```bash
+WSO2_BASE=https://your-wso2-host      # server root, no trailing path
+WSO2_CLIENT_ID=...
+WSO2_CLIENT_SECRET=...
+WSO2_REDIRECT_URI=http://localhost:5001/api/auth/wso2/callback   # must match WSO2 exactly
+FRONTEND_URL=http://localhost:5173    # also added to the CORS allowlist
+COOKIE_SECRET=...                     # long random string, e.g. openssl rand -hex 32
+```
+
+The flow and its endpoints are described under [Sign in with WSO2](#sign-in-with-wso2-single-sign-on).
 
 ### Running the Server
 
@@ -212,6 +240,41 @@ POST /api/users/login
 **Response `200`:** Same shape as Register response.
 
 **Errors:** `401 Invalid email or password`
+
+---
+
+#### Sign in with WSO2 (single sign-on)
+
+```
+GET  /api/auth/wso2/login
+GET  /api/auth/wso2/callback
+POST /api/auth/wso2/logout
+```
+
+**Access:** Public
+
+How a sign-in works:
+
+1. The frontend sends the browser to `GET /api/auth/wso2/login`. The backend creates a random `state`, `nonce` and PKCE verifier, keeps them in a signed httpOnly cookie (`wso2_tx`, valid 5 minutes), and redirects to the WSO2 login page.
+2. The user signs in on WSO2, which redirects the browser to `GET /api/auth/wso2/callback?code=...&state=...`.
+3. The backend checks `state` against the cookie, then exchanges the code for tokens, sending the client secret and the PKCE verifier. It verifies the ID token: RS256 signature against WSO2's published keys, issuer, audience, expiry and `nonce`.
+4. It finds or creates the user (new SSO users are always `Public`), sets the normal `jwt` session cookie, and redirects to `FRONTEND_URL/oauth/callback`.
+
+If any step fails, the browser is redirected to `FRONTEND_URL/login?sso_error=<code>` with no session:
+
+| `sso_error`  | Meaning                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------ |
+| `state`      | Login cookie missing, tampered or expired, or `state` does not match (possible CSRF)       |
+| `denied`     | The user cancelled, or WSO2 refused the request                                            |
+| `token`      | The code could not be exchanged (e.g. it was already used)                                 |
+| `verify`     | The ID token failed verification, or userinfo was about a different user                   |
+| `nonce`      | The ID token belongs to a different login                                                  |
+| `email`      | WSO2 gave no usable email address                                                          |
+| `unverified` | The email matches an existing account but WSO2 has not verified it, so they are not linked |
+| `account`    | The email matches several accounts, or one already linked to another WSO2 identity         |
+| `server`     | Unexpected server error                                                                    |
+
+`POST /api/auth/wso2/logout` clears the session cookie and returns `{ "success": true, "logoutUrl": "..." }`. The frontend then sends the browser to `logoutUrl` to end the WSO2 session too.
 
 ---
 
@@ -1076,6 +1139,22 @@ PERF_TARGET=https://vaxtrack-backend.onrender.com npm run test:perf:cloud
 ```
 
 Artillery prints: request rate, response time percentiles (p50, p95, p99), HTTP status distribution, and error counts.
+
+### Single Sign-On Tests (WSO2)
+
+`tests/wso2Auth.test.js` tests the sign-in against the **real** WSO2 Identity Server. Only the user database is replaced, by an in-memory list. It reads the `WSO2_*` settings from `.env` and needs network access; without those settings it is skipped (e.g. in CI).
+
+It checks that:
+
+- the issuer and endpoints the backend uses match WSO2's published discovery document
+- `/login` sends the browser to WSO2 with `state`, `nonce` and an S256 PKCE challenge, and the client secret is never in the browser URL
+- WSO2 accepts the request and shows its login page, and refuses to send the code to a callback URL that is not registered
+- the callback rejects a forged `state` (CSRF), and a code WSO2 did not issue is refused by WSO2's token endpoint, with no session in either case
+- `/logout` clears the session, and WSO2 accepts the logout URL
+
+```bash
+npm test -- tests/wso2Auth.test.js
+```
 
 ### Dependency Security (npm audit)
 

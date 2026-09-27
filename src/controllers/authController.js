@@ -12,12 +12,23 @@ const generateToken = (id, role) => {
   });
 };
 
+// Helper Function: JWT cookie options shared by set/clear.
+// Production (frontend and API on different sites) needs Secure + SameSite=None.
+// Locally the frontend and API are both on localhost (same site) over plain
+// http, where some browsers (e.g. Safari) reject Secure cookies, so use Lax.
+const tokenCookieOptions = () => {
+  const isProduction = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+  };
+};
+
 // Helper Function: Set JWT Token Cookie
 const setTokenCookie = (res, token) => {
   res.cookie("jwt", token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    ...tokenCookieOptions(),
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 };
@@ -25,9 +36,7 @@ const setTokenCookie = (res, token) => {
 // Helper Function: Clear JWT Token Cookie (options must match setTokenCookie)
 const clearTokenCookie = (res) => {
   res.cookie("jwt", "", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    ...tokenCookieOptions(),
     expires: new Date(0),
   });
 };

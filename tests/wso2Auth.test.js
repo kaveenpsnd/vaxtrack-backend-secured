@@ -38,10 +38,11 @@ jest.unstable_mockModule('../src/models/User.js', () => ({
   },
 }));
 
-// The real login limiter (5 per 15 min) would block the repeated logins in this file.
+// The real limiters would block the repeated logins in this file.
 jest.unstable_mockModule('../src/middleware/rateLimitMiddleware.js', () => ({
   loginLimiter: (req, res, next) => next(),
   registerLimiter: (req, res, next) => next(),
+  ssoLimiter: (req, res, next) => next(),
 }));
 
 const { default: wso2AuthRoutes } = await import('../src/routes/wso2AuthRoutes.js');

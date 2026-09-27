@@ -88,8 +88,8 @@ describe("Auth Controller", () => {
         expect.any(String),
         expect.objectContaining({
           httpOnly: true,
-          secure: true,
-          sameSite: "none",
+          secure: false,
+          sameSite: "lax",
           maxAge: 30 * 24 * 60 * 60 * 1000,
         })
       );
@@ -183,8 +183,8 @@ describe("Auth Controller", () => {
         expect.any(String),
         expect.objectContaining({
           httpOnly: true,
-          secure: true,
-          sameSite: "none",
+          secure: false,
+          sameSite: "lax",
           maxAge: 30 * 24 * 60 * 60 * 1000,
         })
       );
@@ -242,8 +242,8 @@ describe("Auth Controller", () => {
         "",
         expect.objectContaining({
           httpOnly: true,
-          secure: true,
-          sameSite: "none",
+          secure: false,
+          sameSite: "lax",
           expires: new Date(0),
         })
       );
@@ -252,6 +252,24 @@ describe("Auth Controller", () => {
         success: true,
         message: "Logged out successfully",
       });
+    });
+
+    test("should use Secure + SameSite=None cookies in production", () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      try {
+        const res = mockRes();
+
+        logoutUser({}, res);
+
+        expect(res.cookie).toHaveBeenCalledWith(
+          "jwt",
+          "",
+          expect.objectContaining({ httpOnly: true, secure: true, sameSite: "none" })
+        );
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
     });
   });
 

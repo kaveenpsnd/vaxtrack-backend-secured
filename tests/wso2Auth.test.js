@@ -69,6 +69,18 @@ const startLogin = async () => {
   };
 };
 
+// WSO2 sends the browser back to /callback with ?code&state.
+const callback = async (params, cookie) => {
+  const res = await fetch(`${api}/callback?${new URLSearchParams(params)}`, {
+    redirect: 'manual',
+    headers: { cookie },
+  });
+  return {
+    location: res.headers.get('location'),
+    jwtCookie: res.headers.getSetCookie().find((c) => c.startsWith('jwt=')),
+  };
+};
+
 // Where WSO2 redirects the browser to for this URL (the redirect is not followed).
 const redirectOf = async (url) => {
   const res = await fetch(url, { redirect: 'manual' });
@@ -81,6 +93,9 @@ describeWso2('Sign-in with the real WSO2 Identity Server', () => {
     server = http.createServer(app).listen(0);
     await new Promise((resolve) => server.once('listening', resolve));
     api = `http://127.0.0.1:${server.address().port}/api/auth/wso2`;
+
+    // The controller logs every rejected sign-in; keep the output readable.
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterAll(async () => {
@@ -89,6 +104,7 @@ describeWso2('Sign-in with the real WSO2 Identity Server', () => {
 
   beforeEach(() => {
     users = [];
+    jest.clearAllMocks();
   });
 
   test('the endpoints the backend uses are the ones WSO2 publishes', async () => {
@@ -143,5 +159,25 @@ describeWso2('Sign-in with the real WSO2 Identity Server', () => {
 
     expect(next.pathname).toBe('/authenticationendpoint/oauth2_error.do');
     expect(next.searchParams.get('oauthErrorCode')).toBe('invalid_callback');
+  });
+
+  test('a callback with a forged state is rejected, with no session (CSRF)', async () => {
+    const login = await startLogin();
+
+    const result = await callback({ code: 'any-code', state: 'forged-state' }, login.cookie);
+
+    expect(result.location).toBe(`${FRONTEND}/login?sso_error=state`);
+    expect(result.jwtCookie).toBeUndefined();
+  });
+
+  test('a code that WSO2 did not issue is refused by the real token endpoint, with no session', async () => {
+    const login = await startLogin();
+
+    const result = await callback({ code: 'made-up-code', state: login.state }, login.cookie);
+
+    expect(result.location).toBe(`${FRONTEND}/login?sso_error=token`);
+    expect(result.jwtCookie).toBeUndefined();
+    // invalid_grant = WSO2 accepted VaxTrack's client ID and secret, and refused only the code
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('invalid_grant'));
   });
 });

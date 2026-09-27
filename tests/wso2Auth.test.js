@@ -180,4 +180,17 @@ describeWso2('Sign-in with the real WSO2 Identity Server', () => {
     // invalid_grant = WSO2 accepted VaxTrack's client ID and secret, and refused only the code
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('invalid_grant'));
   });
+
+  test('/logout ends the session and WSO2 accepts the logout URL', async () => {
+    const res = await fetch(`${api}/logout`, { method: 'POST' });
+    const { logoutUrl } = await res.json();
+    const clearedCookie = res.headers.getSetCookie().find((c) => c.startsWith('jwt='));
+
+    expect(clearedCookie).toMatch(/^jwt=;/);
+
+    // WSO2 accepts the URL and sends the browser back to the frontend login page
+    const next = await redirectOf(logoutUrl);
+
+    expect(next.origin + next.pathname).toBe(`${FRONTEND}/login`); // WSO2 adds a ?crId tracking ID
+  });
 });

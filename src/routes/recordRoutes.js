@@ -15,8 +15,9 @@ const router = express.Router();
 
 // Route: Add a new vaccination record
 // POST /api/records
-// We protect this so only logged-in users (staff) can add records.
-router.post('/', protect, createRecord);
+// Staff/Admin only. `protect` only proves the caller is logged in; `staffOnly`
+// is what stops a Public user from forging vaccination records.
+router.post('/', protect, staffOnly, createRecord);
 
 // Route: Get logged-in user's vaccination history
 // GET /api/records/my

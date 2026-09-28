@@ -1,5 +1,7 @@
 import Vaccine from "../models/Vaccine.js";
 import { deleteImage, uploadImage } from "../services/cloudinaryService.js";
+import { escapeRegex } from "../helpers/regexHelper.js";
+import { isValidImageBuffer } from "../helpers/fileHelper.js";
 
 // ──────────────────────────────────────────────
 // @desc    Create a new vaccine
@@ -53,6 +55,12 @@ const createVaccine = async (req, res) => {
     // Upload image to Cloudinary if a file was provided
     let imageUrl = null;
     if (req.file) {
+      if (!isValidImageBuffer(req.file.buffer)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid file content. Only genuine JPEG, PNG, and WebP images are allowed.",
+        });
+      }
       imageUrl = await uploadImage(req.file.buffer);
     }
 
@@ -105,7 +113,7 @@ const getAllVaccines = async (req, res) => {
     const { manufacturer } = req.query;
 
     const filter = {};
-    if (manufacturer) filter.manufacturer = { $regex: manufacturer, $options: "i" };
+    if (manufacturer) filter.manufacturer = { $regex: escapeRegex(manufacturer), $options: "i" };
 
     const vaccines = await Vaccine.find(filter).sort({ createdAt: -1 });
 
@@ -215,6 +223,12 @@ const updateVaccine = async (req, res) => {
     }
 
     if (req.file) {
+      if (!isValidImageBuffer(req.file.buffer)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid file content. Only genuine JPEG, PNG, and WebP images are allowed.",
+        });
+      }
       // New image upload — replaces any existing image
       if (vaccine.imageUrl) {
         await deleteImage(vaccine.imageUrl);

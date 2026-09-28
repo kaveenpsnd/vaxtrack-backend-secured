@@ -2,6 +2,8 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import mongoose from "mongoose";
 import { deleteImage, uploadImage } from "../services/cloudinaryService.js";
+import { escapeRegex } from "../helpers/regexHelper.js";
+import { isValidImageBuffer } from "../helpers/fileHelper.js";
 
 // Helper Function: Generate JWT Token
 const generateToken = (id, role) => {
@@ -9,11 +11,43 @@ const generateToken = (id, role) => {
     expiresIn: "30d", // Token expires in 30 days
   });
 };
+
+// Helper Function: JWT cookie options shared by set/clear.
+// Production (frontend and API on different sites) needs Secure + SameSite=None.
+// Locally the frontend and API are both on localhost (same site) over plain
+// http, where some browsers (e.g. Safari) reject Secure cookies, so use Lax.
+const tokenCookieOptions = () => {
+  const isProduction = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+  };
+};
+
+// Helper Function: Set JWT Token Cookie
+const setTokenCookie = (res, token) => {
+  res.cookie("jwt", token, {
+    ...tokenCookieOptions(),
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+  });
+};
+
+// Helper Function: Clear JWT Token Cookie (options must match setTokenCookie)
+const clearTokenCookie = (res) => {
+  res.cookie("jwt", "", {
+    ...tokenCookieOptions(),
+    expires: new Date(0),
+  });
+};
+
 // @desc    Register a new user
 // @route   POST /api/users
 // @access  Public
 const registerUser = async (req, res) => {
-  const { name, email, password, role, nic, phone, address, dependents } = req.body;
+  // SECURITY: `role` is intentionally NOT read from req.body. Public registration
+  // must never be able to choose its own role (privilege escalation, issue #1).
+  const { name, email, password, nic, phone, address, dependents } = req.body;
 
   // 1. Check if user already exists
   const userExists = await User.findOne({ email });
@@ -28,7 +62,7 @@ const registerUser = async (req, res) => {
     name,
     email,
     password, // (Will be hashed automatically by our Model)
-    role,
+    role: "Public", // Forced server-side; ignores any role sent by the client
     nic,
     phone,
     address,
@@ -37,13 +71,15 @@ const registerUser = async (req, res) => {
 
   // 3. specific response if successful
   if (user) {
+    const token = generateToken(user._id, user.role);
+    setTokenCookie(res, token);
+
     res.status(201).json({
       _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
       profilePicture: user.profilePicture,
-      token: generateToken(user._id, user.role), // Give them a token immediately
     });
   } else {
     res.status(400);
@@ -59,20 +95,34 @@ const authUser = async (req, res) => {
   // 1. Find user by email
   const user = await User.findOne({ email });
 
-  // 2. Check if user exists AND password matches
-  if (user && (await user.matchPassword(password))) {
+  // 2. SSO-only accounts (created via WSO2, no password) cannot use password
+  //    login. Same generic message, so the response does not reveal the account type.
+  const isSsoOnly = user && user.authProvider === "wso2" && !user.password;
+
+  // 3. Check if user exists AND password matches
+  if (user && !isSsoOnly && (await user.matchPassword(password))) {
+    const token = generateToken(user._id, user.role);
+    setTokenCookie(res, token);
+
     res.json({
       _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
       profilePicture: user.profilePicture,
-      token: generateToken(user._id, user.role), // Give them a fresh token
     });
   } else {
     res.status(401);
     throw new Error("Invalid email or password");
   }
+};
+
+// @desc    Logout user / clear cookie
+// @route   POST /api/users/logout
+// @access  Public
+const logoutUser = (req, res) => {
+  clearTokenCookie(res);
+  res.status(200).json({ success: true, message: "Logged out successfully" });
 };
 
 // @desc    Search patients by NIC, name, or ObjectId (Staff/Admin only)
@@ -100,11 +150,12 @@ const searchUsers = async (req, res) => {
 
     // If no ObjectId match, search by NIC or name
     if (users.length === 0) {
+      const sanitizedQuery = escapeRegex(query);
       users = await User.find({
         role: 'Public',
         $or: [
-          { nic: { $regex: `^${query}`, $options: 'i' } },
-          { name: { $regex: query, $options: 'i' } },
+          { nic: { $regex: `^${sanitizedQuery}`, $options: 'i' } },
+          { name: { $regex: sanitizedQuery, $options: 'i' } },
         ],
       })
         .select('name email nic role phone')
@@ -136,6 +187,31 @@ const updateUserProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
+    // 1. Identify sensitive fields: email, password, and phone
+    const isEmailChanging = req.body.email && req.body.email !== user.email;
+    const isPhoneChanging = req.body.phone && req.body.phone !== user.phone;
+    const isPasswordChanging = Boolean(req.body.password);
+
+    const isUpdatingSensitiveField = isEmailChanging || isPhoneChanging || isPasswordChanging;
+
+    // 2. If sensitive fields are changing, require and verify currentPassword
+    if (isUpdatingSensitiveField) {
+      if (!req.body.currentPassword) {
+        return res.status(401).json({
+          success: false,
+          message: "Current password is required to update sensitive information.",
+        });
+      }
+
+      const isMatch = await user.matchPassword(req.body.currentPassword);
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: "Incorrect current password.",
+        });
+      }
+    }
+
     user.name = req.body.name || user.name;
     user.email = req.body.email || user.email;
     user.phone = req.body.phone || user.phone;
@@ -148,6 +224,12 @@ const updateUserProfile = async (req, res) => {
 
     // Handle profile picture upload to Cloudinary (vaxtrack/profiles folder)
     if (req.file) {
+      if (!isValidImageBuffer(req.file.buffer)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid file content. Only genuine JPEG, PNG, and WebP images are allowed.",
+        });
+      }
       // Delete the old profile picture from Cloudinary if it exists
       if (user.profilePicture) {
         await deleteImage(user.profilePicture);
@@ -156,6 +238,9 @@ const updateUserProfile = async (req, res) => {
     }
 
     const updatedUser = await user.save();
+
+    const token = generateToken(updatedUser._id, updatedUser.role);
+    setTokenCookie(res, token);
 
     res.json({
       _id: updatedUser._id,
@@ -166,7 +251,6 @@ const updateUserProfile = async (req, res) => {
       nic: updatedUser.nic,
       address: updatedUser.address,
       profilePicture: updatedUser.profilePicture,
-      token: generateToken(updatedUser._id, updatedUser.role),
     });
   } catch (error) {
     console.error("updateUserProfile error:", error.message);
@@ -178,5 +262,14 @@ const updateUserProfile = async (req, res) => {
   }
 };
 
-export { authUser, registerUser, searchUsers, updateUserProfile };
+export {
+  authUser,
+  registerUser,
+  searchUsers,
+  updateUserProfile,
+  logoutUser,
+  generateToken,
+  setTokenCookie,
+  clearTokenCookie,
+};
 

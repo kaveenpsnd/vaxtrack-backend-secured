@@ -1,5 +1,6 @@
 import SideEffect from '../models/SideEffect.js';
 import Record from '../models/Record.js';
+import { escapeRegex } from '../helpers/regexHelper.js';
 
 // ──────────────────────────────────────────────
 // @desc    Report a side effect for a vaccination
@@ -309,8 +310,9 @@ const getAllSideEffects = async (req, res) => {
         // Filter by NIC — resolve user ID first
         if (req.query.nic) {
             const User = (await import('../models/User.js')).default;
+            const sanitizedNic = escapeRegex(req.query.nic.trim());
             const matchedUser = await User.findOne({
-                nic: { $regex: `^${req.query.nic.trim()}`, $options: 'i' },
+                nic: { $regex: `^${sanitizedNic}`, $options: 'i' },
             }).select('_id');
             if (matchedUser) {
                 filter.userId = matchedUser._id;

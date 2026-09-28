@@ -1,3 +1,4 @@
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
@@ -8,9 +9,11 @@ import path from "path";
 import swaggerUi from "swagger-ui-express";
 import YAML from "yamljs";
 import connectDB from "./config/db.js";
+import corsOptions from "./config/corsOptions.js";
 import { startCronJobs } from "./services/cronService.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import wso2AuthRoutes from "./routes/wso2AuthRoutes.js";
 import batchRoutes from "./routes/batchRoutes.js";
 import clinicRoutes from "./routes/clinicRoutes.js";
 import dependentRoutes from "./routes/dependentRoutes.js";
@@ -29,9 +32,18 @@ dotenv.config();
 
 const app = express();
 
+// Behind Render's reverse proxy: trust the first X-Forwarded-For hop so
+// req.ip is the real client address (used by the per-IP rate limiters).
+app.set("trust proxy", 1);
+
 // Middleware
 app.use(express.json());
-app.use(cors());
+// The secret lets us sign the short-lived WSO2 SSO transaction cookie.
+// Unsigned cookies (e.g. the existing `jwt` cookie) are parsed exactly as before.
+app.use(cookieParser(process.env.COOKIE_SECRET));
+// Only the origins we ship a browser client on may read API responses.
+// A bare cors() would send Access-Control-Allow-Origin: * to every site.
+app.use(cors(corsOptions));
 app.use(helmet());
 app.use(morgan("dev"));
 
@@ -47,6 +59,7 @@ startCronJobs();
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.use("/api/users", authRoutes);
+app.use("/api/auth/wso2", wso2AuthRoutes);
 
 // Health check
 app.get("/", (req, res) => {
@@ -66,7 +79,10 @@ app.use("/api/appointments", appointmentRoutes);
 app.use("/api/notifications", notificationRoutes);
 // Global Error Handler
 app.use((err, req, res, next) => {
-  const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+  const isClientError =
+    err.name === "MulterError" ||
+    (err.message && err.message.includes("Only JPEG, PNG, and WebP images are allowed"));
+  const statusCode = isClientError ? 400 : (res.statusCode === 200 ? 500 : res.statusCode);
   res.status(statusCode).json({
     success: false,
     message: err.message,

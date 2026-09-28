@@ -713,6 +713,91 @@ paths:
         '401':
           description: Invalid email or password
 
+  /auth/wso2/login:
+    get:
+      summary: Start sign-in with WSO2 Identity Server
+      description: >
+        Starts OpenID Connect sign-in (Authorization Code flow with PKCE).
+        Sets a signed, httpOnly `wso2_tx` cookie holding this login's state,
+        nonce and PKCE verifier (valid 5 minutes), then redirects the browser
+        to the WSO2 login page. Open it in the browser, not with fetch/XHR.
+      tags:
+        - Auth
+      responses:
+        '302':
+          description: Redirect to the WSO2 authorize endpoint
+          headers:
+            Location:
+              description: >
+                WSO2 authorize URL with response_type=code, client_id,
+                redirect_uri, scope, state, nonce and an S256 code_challenge
+              schema: { type: string }
+        '429':
+          description: Too many login attempts
+        '500':
+          description: Single sign-on is not configured
+
+  /auth/wso2/callback:
+    get:
+      summary: WSO2 sign-in callback
+      description: >
+        WSO2 redirects the browser here after sign-in. The backend checks
+        `state` against the `wso2_tx` cookie, exchanges the code for tokens
+        (client secret + PKCE verifier), verifies the ID token (RS256
+        signature, issuer, audience, expiry, nonce), finds or creates the
+        user (new SSO users are always Public) and sets the `jwt` session
+        cookie. Every outcome is a redirect to the frontend.
+      tags:
+        - Auth
+      parameters:
+        - in: query
+          name: code
+          schema: { type: string }
+          description: Authorization code from WSO2
+        - in: query
+          name: state
+          required: true
+          schema: { type: string }
+          description: Must match the state stored in the wso2_tx cookie
+        - in: query
+          name: error
+          schema: { type: string }
+          description: Set by WSO2 when the user cancels or the request is refused
+      responses:
+        '302':
+          description: >
+            Success: redirect to `FRONTEND_URL/oauth/callback` with the `jwt`
+            cookie set. Failure: redirect to `FRONTEND_URL/login?sso_error=<code>`
+            (state, denied, token, verify, nonce, email, unverified, account
+            or server) with no session.
+        '429':
+          description: Too many login attempts
+        '500':
+          description: Single sign-on is not configured
+
+  /auth/wso2/logout:
+    post:
+      summary: Sign out and get the WSO2 logout URL
+      description: >
+        Clears the `jwt` session cookie and returns the WSO2 end-session URL.
+        The frontend then sends the browser there to end the WSO2 session too.
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: Session cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  logoutUrl:
+                    type: string
+                    example: https://your-wso2-host/oidc/logout?client_id=...&post_logout_redirect_uri=...
+        '500':
+          description: Single sign-on is not configured
+
   /users/profile:
     get:
       summary: Get user profile
@@ -2732,6 +2817,8 @@ paths:
           description: Invalid record data
         '401':
           description: Not authorized
+        '403':
+          description: Forbidden — requires HospitalStaff or Admin role
         '404':
           description: Patient not found
         '500':
